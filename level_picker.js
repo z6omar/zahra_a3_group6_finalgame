@@ -240,14 +240,14 @@ if (mouseX > infoBtnX && mouseX < infoBtnX + infoBtnSize &&
 }
 
 function startLevel(i) {
+    if (i === 0) {
+        startLevel1();   // Level 1 uses tutorial
+        return;
+    }
+
     resetGame();
     currentLevel = i + 1;
     gameState = "level" + (i + 1);
-}
-
-function placeholderLevel(num) { //temporary for A2
-    console.log("Level " + num + " is not implemented yet!");
-    alert("Level " + num + " is not implemented yet!");
 }
 
 function startLevel1() {

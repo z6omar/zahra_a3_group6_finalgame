@@ -839,10 +839,6 @@ function draw() {
     return;
   }
 
-  if (gameState === "placeholder") {
-    drawPlaceholderScreen();
-  }
-
   if (gameState === "level1") {
       drawLevel1();
       return;
@@ -1608,22 +1604,22 @@ function handleInput() {
   // reset each frame
   player.isMoving = false;
 
-  if (keyIsDown(87)) {           // W / up
+  if (keyIsDown(87) || keyIsDown(UP_ARROW)) {           // W / up
     newY -= player.speed;
     player.direction = "up";
     player.isMoving = true;
   }
-  if (keyIsDown(65)) {           // A / left
+  if (keyIsDown(65) || keyIsDown(LEFT_ARROW)) {           // A / left
     newX -= player.speed;
     player.direction = "left";
     player.isMoving = true;
   }
-  if (keyIsDown(68)) {           // D / right
+  if (keyIsDown(68) || keyIsDown(RIGHT_ARROW)) {           // D / right
     newX += player.speed;
     player.direction = "right";
     player.isMoving = true;
   }
-  if (keyIsDown(83)) {           // S / down
+  if (keyIsDown(83) || keyIsDown(DOWN_ARROW)) {           // S / down
     newY += player.speed;
     player.direction = "down";
     player.isMoving = true;
