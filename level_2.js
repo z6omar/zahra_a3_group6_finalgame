@@ -1,5 +1,12 @@
 // level_2.js file
 
+/*for catherine: Holes for level 2
+  { x: 622, y: 923, variant: 0 },
+  { x: 851, y: 1090, variant: 0 },
+  { x: 232, y: 891, variant: 0 },
+  { x: 373, y: 724, variant: 0 },
+  { x: 820, y: 698, variant: 0 },*/
+
 // Possible fish spawn spots for Level 2 (picked randomly each attempt).
 // Walk the penguin to a spot, read "Player: x, y" in the corner of the
 // screen, then add {x, y} here.

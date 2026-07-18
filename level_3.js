@@ -1,5 +1,14 @@
 // level_3.js file
 
+/*for catherine: Holes for level 3:
+  { x: 552, y: 1122, variant: 0 },
+  { x: 966, y: 1157, variant: 0 },
+  { x: 889, y: 702, variant: 0 },
+  { x: 632, y: 869, variant: 0 },
+  { x: 282, y: 947, variant: 0 },
+  { x: 329, y: 569, variant: 0 },
+  { x: 633, y: 459, variant: 0 }, */
+
 const LEVEL3_FISH_SPAWNS = [
   { x: 85, y: 1502},
   { x: 1124, y: 1517},
