@@ -4,6 +4,15 @@ const INFO_OPEN_X = 100;      // where box stops
 const INFO_SPEED = 50;
 let infoBoxX = INFO_CLOSED_X;
 
+// Level picker assets
+let currentLevel = 1;
+let lock_icon;
+let check_icon;
+let info_box;
+let level1Complete = true;
+let level2Complete = true;
+let level3Complete = true;
+
 let levelShake = [0, 0, 0];
 const PANEL_CLOSED_X = 1600;
 const PANEL_OPEN_X   = 700;
@@ -18,6 +27,17 @@ let activePanelIndex = -1;
 let nextPanelIndex = -1;
 let isClosingPanel = false;
 let playBtnPressed = [false, false, false];
+
+function preloadLevelPickerAssets() {
+  levelPickerBg = loadImage("assets/images/level_picker.JPG");
+  lock_icon = loadImage("assets/images/lock_icon.png");
+  check_icon = loadImage("assets/images/check_icon.png");
+  info_box = loadImage("assets/images/level_info_box.png");
+  popUpCard = loadImage("assets/images/pop_up_card.png");
+  foundPopupCard = loadImage("assets/images/Foundpopup_card.png");
+  infoButtonImg = loadImage("assets/images/info_button.png");
+  wideBoxImg = loadImage("assets/images/bigger_box.png");
+}
 
 function drawLevelPickerScreen() {
     cursor(ARROW);

@@ -30,7 +30,7 @@ function drawWinScreen() {
   let timeText = minutes + ":" + nf(seconds, 2);
 
   fill(255);
-  textSize(24);
+  textSize(36);
   text("Current Time: " + timeText, width / 2, height / 2 - 40);
 
   let key = "level" + currentLevel;
