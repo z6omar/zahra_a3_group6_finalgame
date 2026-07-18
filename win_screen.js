@@ -1,3 +1,5 @@
+//win_screen.js file
+
 function drawWinScreen() {
   image(winBg, 0, 0, width, height);
 

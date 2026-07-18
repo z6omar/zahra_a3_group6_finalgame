@@ -1,3 +1,5 @@
+//lose_screen.js file
+
 function drawLossScreen() {
   image(lossBg, 0, 0, width, height);
 

@@ -1,3 +1,5 @@
+//level_picker.js file
+
 let infoOpen = false;
 const INFO_CLOSED_X = -1100;  // off screen left
 const INFO_OPEN_X = 100;      // where box stops
@@ -260,37 +262,27 @@ if (mouseX > infoBtnX && mouseX < infoBtnX + infoBtnSize &&
 }
 
 function startLevel(i) {
-    if (i === 0) {
-        startLevel1();   // Level 1 uses tutorial
-        return;
-    }
+  if (i === 0) {
+    startLevel1();   // Level 1 uses tutorial
+    return;
+  }
 
-    resetGame();
-    currentLevel = i + 1;
-    gameState = "level" + (i + 1);
+  currentLevel = i + 1;      // 2 for Level 2, 3 for Level 3
+  loadLevel(currentLevel);   // build that level's background/walls/spikes/fish
+  resetGame();
+  gameState = "playing";
+  cursor(ARROW);
 }
 
 function startLevel1() {
-    resetGame();          // resets timer, penguin, stomp, etc.
-    gameState = "tutorial";
-    tutorialActive = true;
-    tutorialAlpha = 0;
-    tutorialIndex = 0;
-    tutorialDelay = tutorialSteps[0].delay;
+loadLevel(1);
+resetGame();          // resets timer, penguin, stomp, etc.
+gameState = "tutorial";
+tutorialActive = true;
+tutorialAlpha = 0;
+tutorialIndex = 0;
+tutorialDelay = tutorialSteps[0].delay;
 }
-
-function startLevel2() {
-    resetGame();
-    currentLevel = 2;
-    gameState = "level2";
-}
-
-function startLevel3() {
-    resetGame();
-    currentLevel = 2;
-    gameState = "level3";
-}
-
 
 
 // For fastest times

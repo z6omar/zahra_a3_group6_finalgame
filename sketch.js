@@ -1,9 +1,13 @@
+//sketch.js file
 // Screen manager
 let gameState = "start"; 
 let startBg;
 let winBg;
 let lossBg;
 let bgImg;
+let level1Bg;
+let level2Bg;
+let level3Bg;
 let transitionPage;
 let levelPickerBg;
 
@@ -21,6 +25,10 @@ const VIEW_W  = 1200;
 const VIEW_H  = 780;
 let WORLD_W;
 let WORLD_H;
+let WORLD_W_SCALED;
+let WORLD_H_SCALED;
+let bgScale;
+let WORLD_TOP_LIMIT;
 const CAM_SMOOTHING = 0.08;
 let camX = 0;
 let camY = 0;
@@ -214,6 +222,52 @@ function playerSpawnY() {
   return WORLD_H_SCALED - idleH / 2;
 }
 
+// Builds the world (background, walls, spikes, fish) for whichever
+// level number is passed in. Call this before resetGame() whenever
+// the player enters a level.
+function loadLevel(levelNum) {
+  let img, topOffset;
+  if (levelNum === 1) { img = level1Bg; topOffset = LEVEL1_TOP_OFFSET; }
+  else if (levelNum === 2) { img = level2Bg; topOffset = LEVEL2_TOP_OFFSET; }
+  else if (levelNum === 3) { img = level3Bg; topOffset = LEVEL3_TOP_OFFSET; }
+
+  bgImg = img;
+  WORLD_W = img.width;
+  WORLD_H = img.height;
+  bgScale = Math.max(VIEW_W / WORLD_W, VIEW_H / WORLD_H);
+  WORLD_W_SCALED = WORLD_W * bgScale;
+  WORLD_H_SCALED = WORLD_H * bgScale;
+  WORLD_TOP_LIMIT = WORLD_H_SCALED / 2 - topOffset;
+
+  // Fish
+  let fishStart;
+  if (levelNum === 1) { fishStart = getLevel1FishStart(WORLD_W_SCALED, WORLD_H_SCALED); fishSpawns = LEVEL1_FISH_SPAWNS; }
+  else if (levelNum === 2) { fishStart = getLevel2FishStart(WORLD_W_SCALED, WORLD_H_SCALED); fishSpawns = LEVEL2_FISH_SPAWNS; }
+  else if (levelNum === 3) { fishStart = getLevel3FishStart(WORLD_W_SCALED, WORLD_H_SCALED); fishSpawns = LEVEL3_FISH_SPAWNS; }
+  fish.x = fishStart.x;
+  fish.y = fishStart.y;
+  fish.collected = false;
+
+  // Walls (clear old level's walls first, then rebuild)
+  walls.length = 0;
+  if (levelNum === 1) walls.push(...buildLevel1Walls(WORLD_W_SCALED, WORLD_H_SCALED));
+  else if (levelNum === 2) walls.push(...buildLevel2Walls(WORLD_W_SCALED, WORLD_H_SCALED));
+  else if (levelNum === 3) walls.push(...buildLevel3Walls(WORLD_W_SCALED, WORLD_H_SCALED));
+
+  // Spikes
+  if (levelNum === 1) spikes = LEVEL1_SPIKES.map(s => ({ ...s }));
+  else if (levelNum === 2) spikes = LEVEL2_SPIKES.map(s => ({ ...s }));
+  else if (levelNum === 3) spikes = LEVEL3_SPIKES.map(s => ({ ...s }));
+
+  // Spawn player, then figure out which side of each wall is "legal"
+  player.x = WORLD_W_SCALED / 2;
+  player.y = playerSpawnY();
+
+  for (let w of walls) {
+    w.side = Math.sign(pointSide(player.x, player.y, w.x1, w.y1, w.x2, w.y2));
+  }
+}
+
 const PENGUIN_HITBOX = {
   w: 30,
   h: 40,
@@ -222,6 +276,7 @@ const PENGUIN_HITBOX = {
 };
 
 let DEBUG_PENGUIN_HITBOX = false; // remove after debugging
+let DEBUG_SHOW_COORDS = true; // shows player x,y on screen - use this to find coordinates for your new levels. Set to false when done building.
 
 let clearRadius = 100; // circle width
 let holeOffsetX = -3;
@@ -367,39 +422,9 @@ function preload() {
   spikeImages[2] = loadImage("assets/images/spike_tall.png");
   spikeImages[3] = loadImage("assets/images/spike_double.png");
 
-  // NOTE: this currently always builds Level 1's world (walls,
-  // spikes, fish spawns) from level_1.js. When level 2 / level 3
-  // get their own data files, swap in the matching LEVEL2_*/LEVEL3_*
-  // constants and buildLevelNWalls()/getLevelNFishStart() calls
-  // based on whichever level was picked.
-  bgImg = loadImage("assets/images/tutorial_background.png", () => {
-    WORLD_W = bgImg.width;
-    WORLD_H = bgImg.height;
-    bgScale = Math.max(VIEW_W / WORLD_W, VIEW_H / WORLD_H);
-    WORLD_W_SCALED = WORLD_W * bgScale;
-    WORLD_H_SCALED = WORLD_H * bgScale;
-    WORLD_TOP_LIMIT = WORLD_H_SCALED / 2 - 550;
-
-    const fishStart = getLevel1FishStart(WORLD_W_SCALED, WORLD_H_SCALED);
-    fish.x = fishStart.x;
-    fish.y = fishStart.y;
-    fishSpawns = LEVEL1_FISH_SPAWNS;
-
-    walls.push(...buildLevel1Walls(WORLD_W_SCALED, WORLD_H_SCALED));
-
-    // Spawn at the same Y the movement clamp uses in the playing
-    // state, so the penguin doesn't jump up on its first step
-    player.x = WORLD_W_SCALED / 2;
-    player.y = playerSpawnY();
-
-    for (let w of walls) {
-      w.side = Math.sign(
-        pointSide(player.x, player.y, w.x1, w.y1, w.x2, w.y2)
-      );
-    }
-
-    spikes = LEVEL1_SPIKES.map(s => ({ ...s }));
-  });
+  level1Bg = loadImage("assets/images/tutorial_background.png");
+  level2Bg = loadImage("assets/images/level2_background.png");
+  level3Bg = loadImage("assets/images/level3_background.png");
 }
 
 function setup() {
@@ -409,6 +434,7 @@ function setup() {
   startTime = millis();
   blueBuffer  = createGraphics(VIEW_W, VIEW_H);
   ringMaskBuffer = createGraphics(VIEW_W, VIEW_H);
+  loadLevel(1);
 }
 
 function drawSpikes() {
@@ -685,21 +711,6 @@ if (gameState === "transition") {
     return;
   }
 
-  if (gameState === "level1") {
-      drawLevel1();
-      return;
-  }
-
-  if (gameState === "level2") {
-      drawLevel2();
-      return;
-  }
-
-  if (gameState === "level3") {
-      drawLevel3();
-      return;
-  }
-
 
   // -------------------------
   // GAMEPLAY
@@ -838,6 +849,19 @@ if (gameState === "transition") {
   // draw fish ui
   drawFishIconUI();
 
+  // DEBUG: on-screen coordinates — walk the penguin around and read
+  // these numbers off to build your walls/spikes/fish spots for new levels
+  if (DEBUG_SHOW_COORDS) {
+    push();
+    fill(255);
+    stroke(0);
+    strokeWeight(3);
+    textSize(20);
+    textAlign(LEFT, TOP);
+    text("Player: " + floor(player.x) + ", " + floor(player.y), 20, 120);
+    pop();
+  }
+
   // TUTORIAL POST-DELAY (tutorial_cards.js)
   updatePostTutorialTimer();
 
@@ -962,9 +986,6 @@ function resetGame() {
 
   fish.collected = false;
   randomizeFishPosition();
-  bestStars.level1 = 0;
-  bestStars.level2 = 0;
-  bestStars.level3 = 0;
 }
 
 function signedDistToWall(px, py, w) {
