@@ -4,7 +4,7 @@
 // each time randomizeFishPosition() runs).
 const LEVEL1_FISH_SPAWNS = [
   { x: 798, y: 1345},
-  { x: 331, y: 1053},
+  { x: 385, y: 1115},
 ];
 
 // Where the fish first appears when the level loads, expressed
@@ -145,3 +145,7 @@ const LEVEL1_SPIKES = [
 // How far above center the top boundary/camera limit sits.
 // 550 is what Level 1 already used.
 const LEVEL1_TOP_OFFSET = 550;
+
+// World Y coordinate of the finish line for Level 1.
+const LEVEL1_FINISH_Y = 556; // <- replace with your recorded value
+

@@ -29,6 +29,7 @@ let WORLD_W_SCALED;
 let WORLD_H_SCALED;
 let bgScale;
 let WORLD_TOP_LIMIT;
+let finishY;
 const CAM_SMOOTHING = 0.08;
 let camX = 0;
 let camY = 0;
@@ -238,6 +239,9 @@ function loadLevel(levelNum) {
   WORLD_W_SCALED = WORLD_W * bgScale;
   WORLD_H_SCALED = WORLD_H * bgScale;
   WORLD_TOP_LIMIT = WORLD_H_SCALED / 2 - topOffset;
+  if (levelNum === 1) finishY = LEVEL1_FINISH_Y;
+  else if (levelNum === 2) finishY = LEVEL2_FINISH_Y;
+  else if (levelNum === 3) finishY = LEVEL3_FINISH_Y;
 
   // Fish
   let fishStart;
@@ -435,6 +439,19 @@ function setup() {
   blueBuffer  = createGraphics(VIEW_W, VIEW_H);
   ringMaskBuffer = createGraphics(VIEW_W, VIEW_H);
   loadLevel(1);
+}
+
+let DEBUG_SHOW_WALLS = false; // shows wall lines in red — set to false when done
+
+function drawWalls() {
+  if (!DEBUG_SHOW_WALLS) return;
+  push();
+  stroke(255, 0, 255); // bright magenta so it stands out against the background
+  strokeWeight(6 / (camZoom * bgScale));
+  for (let w of walls) {
+    line(w.x1, w.y1, w.x2, w.y2);
+  }
+  pop();
 }
 
 function drawSpikes() {
@@ -741,9 +758,7 @@ if (gameState === "transition") {
 // -------------------------
 // WIN CONDITION (correct)
 // -------------------------
-  let feetY_screen = (player.y - camY) * camZoom * bgScale;
-
-  if (feetY_screen < 0 && fish.collected) {
+if (player.y < finishY && fish.collected) {
       let elapsed = floor((millis() - startTime) / 1000);
       finalTime = elapsed;
 
@@ -790,6 +805,7 @@ if (gameState === "transition") {
   }
 
   // DRAW WORLD
+  // DRAW WORLD
   push();
   scale(camZoom * bgScale);
   translate(-camX, -camY);
@@ -797,6 +813,7 @@ if (gameState === "transition") {
   drawSpikes();
   drawFish();
   drawSpikeHitboxes();
+  drawWalls();
   pop();
 
   // DRAW CHARACTER

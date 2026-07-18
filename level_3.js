@@ -2,7 +2,7 @@
 
 const LEVEL3_FISH_SPAWNS = [
   { x: 85, y: 1502},
-  { x: 1151, y: 1498},
+  { x: 1124, y: 1517},
   { x: 735, y: 1032},
 ];
 
@@ -14,18 +14,49 @@ function getLevel3FishStart(WORLD_W_SCALED, WORLD_H_SCALED) {
 }
 
 function buildLevel3Walls(WORLD_W_SCALED, WORLD_H_SCALED) {
-  return [
+  return [ 
     {
-      x1: WORLD_W_SCALED / 2 - 600,
-      y1: WORLD_H_SCALED / 2 + 1200,
-      x2: WORLD_W_SCALED / 2 + 250,
-      y2: WORLD_H_SCALED / 2 - 1500
+      x1: 74,
+      y1: 1497,
+      x2: 242,
+      y2: 772
     },
     {
-      x1: WORLD_W_SCALED / 2 + 650,
-      y1: WORLD_H_SCALED / 2 + 1200,
-      x2: WORLD_W_SCALED / 2 - 200,
-      y2: WORLD_H_SCALED / 2 - 1500
+      x1: 242,
+      y1: 772,
+      x2: 356,
+      y2: 522
+    },
+    {
+      x1: 356,
+      y1: 522,
+      x2: 468,
+      y2: 379
+    },
+    {
+      //across line
+      x1: 510,
+      y1: 300,
+      x2: 700,
+      y2: 300
+    },
+    {
+      x1: 750,
+      y1: 358,
+      x2: 851,
+      y2: 476
+    },
+    {
+      x1: 927,
+      y1: 603,
+      x2: 1079,
+      y2: 1047
+     },
+    {
+     x1: 1079,
+     y1: 1047,
+     x2: 1125,
+     y2: 1212
     }
   ];
 }
@@ -157,3 +188,6 @@ const LEVEL3_SPIKES = [
 ];
 
 const LEVEL3_TOP_OFFSET = 550;
+
+// World Y coordinate of the finish line for Level 3.
+const LEVEL3_FINISH_Y = 391; // <- replace once you have Level 3's background
