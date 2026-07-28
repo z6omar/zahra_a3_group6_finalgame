@@ -1,6 +1,8 @@
 //sketch.js file
 // Screen manager
 let gameState = "start";
+// DEBUG PANEL
+let debugMode = false;
 let startBg;
 let winBg;
 let lossBg;
@@ -26,7 +28,7 @@ let walkSound;
 let stompSound;
 let stompAura;
 let audioUnlocked = false;
-let musicGateOpen = false; // false = "click anywhere to begin" overlay is showing
+let musicGateOpen = false; // false = "click anywhere to begin" w is showing
 let lastScreenSound = ""; // which of win/loss we've already played the sound for
 
 let transitionStartTime = 0;
@@ -443,6 +445,72 @@ function loadLevel(levelNum) {
   }
 }
 
+
+// ============================================================
+// DEBUG: STOP SOUNDS BEFORE CHANGING SCREENS
+// ============================================================
+function stopDebugSounds() {
+  if (walkSound && walkSound.isPlaying()) {
+    walkSound.stop();
+  }
+
+  if (stompSound && stompSound.isPlaying()) {
+    stompSound.stop();
+  }
+
+  if (stompAura && stompAura.isPlaying()) {
+    stompAura.stop();
+  }
+
+  if (timerSound && timerSound.isPlaying()) {
+    timerSound.stop();
+  }
+
+  if (fishCallNear && fishCallNear.isPlaying()) {
+    fishCallNear.stop();
+  }
+
+  for (let clip of fishCallFar) {
+    if (clip && clip.isPlaying()) {
+      clip.stop();
+    }
+  }
+}
+
+
+// ============================================================
+// DEBUG: JUMP DIRECTLY TO A LEVEL
+// ============================================================
+function debugGoToLevel(levelNum) {
+  // Load the correct background, walls, spikes, holes, fish, etc.
+  loadLevel(levelNum);
+
+  // Reset player, timer, fish and level-specific systems.
+  resetGame();
+
+  // Skip all introduction/tutorial cards.
+  tutorialActive = false;
+  postTutorialTimerActive = false;
+  tutorialIndex = 999;
+
+  // Skip the Level 2 introduction card.
+  level2CardActive = false;
+
+  // Skip the Level 3 introduction card.
+  level3CardActive = false;
+
+  // Start the timer from this moment.
+  startTime = millis();
+  timerStarted = true;
+  gameEnded = false;
+  finalTime = null;
+
+  // Enter gameplay.
+  gameState = "playing";
+
+  cursor(ARROW);
+}
+
 const PENGUIN_HITBOX = {
   w: 30,
   h: 40,
@@ -451,10 +519,9 @@ const PENGUIN_HITBOX = {
 };
 
 let DEBUG_PENGUIN_HITBOX = false;
-let DEBUG_SHOW_COORDS = true; 
+let DEBUG_SHOW_COORDS = false;
 let DEBUG_HOLE_HITBOXES = false;
 let DEBUG_GOAT_HITBOX = false;
-
 
 let clearRadius = 100; // circle width
 let holeOffsetX = -3;
@@ -730,7 +797,6 @@ function drawHoleHitboxes() {
 
   pop();
 }
-
 
 function drawGoatHitbox() {
   if (!DEBUG_GOAT_HITBOX) return;
@@ -1130,6 +1196,7 @@ function updateScreenSounds() {
   if (gameState === "win" && lastScreenSound !== "win") {
     lastScreenSound = "win";
     if (stompSound && stompSound.isPlaying()) stompSound.stop();
+    if (walkSound && walkSound.isPlaying()) walkSound.stop();
     if (winSound && winSound.isLoaded()) winSound.play();
   } else if (gameState === "loss" && lastScreenSound !== "loss") {
     lastScreenSound = "loss";
@@ -1151,7 +1218,10 @@ function updateTimerSound() {
   if (!timerSound || !timerSound.isLoaded()) return;
   if (!audioUnlocked || getAudioContext().state !== "running") return;
 
-  const timerPaused = (tutorialActive && tutorialIndex < 4) || level2CardActive || level3CardActive;
+  const timerPaused =
+    (tutorialActive && tutorialIndex < 4) ||
+    level2CardActive ||
+    level3CardActive;
   const countdownRunning =
     timerStarted &&
     !gameEnded &&
@@ -1208,42 +1278,75 @@ function updateMusic() {
 }
 
 function draw() {
-  if (gameState === "story") {
-    drawStoryScreen();
-    return;
-  }
-
-  // START SCREEN
+  // Update audio systems on every screen.
   updateMusic();
   updateScreenSounds();
   updateFishCall();
   updateTimerSound();
+
+  // STORY SCREEN
+  if (gameState === "story") {
+    drawStoryScreen();
+
+    if (debugMode) {
+      drawDebugPanel();
+    }
+
+    return;
+  }
+
+  // FIRST / TITLE SCREEN
   if (gameState === "start") {
     drawStartScreen();
+
+    if (debugMode) {
+      drawDebugPanel();
+    }
+
     return;
   }
 
   // WIN SCREEN
   if (gameState === "win") {
     drawWinScreen();
+
+    if (debugMode) {
+      drawDebugPanel();
+    }
+
     return;
   }
 
-  // LOSS SCREEN
+  // LOSE SCREEN
   if (gameState === "loss") {
     drawLossScreen();
+
+    if (debugMode) {
+      drawDebugPanel();
+    }
+
     return;
   }
 
-  // WIN → LEVEL PICKER TRANSITION
+  // TRANSITION SCREEN
   if (gameState === "transition") {
     drawTransitionScreen();
+
+    if (debugMode) {
+      drawDebugPanel();
+    }
+
     return;
   }
 
   // LEVEL PICKER
   if (gameState === "level_picker") {
     drawLevelPickerScreen();
+
+    if (debugMode) {
+      drawDebugPanel();
+    }
+
     return;
   }
 
@@ -1251,9 +1354,15 @@ function draw() {
   // GAMEPLAY
   // -------------------------
   if (gameEnded) {
-    gameState = "loss";
-    return;
+  gameState = "loss";
+  drawLossScreen();
+
+  if (debugMode) {
+    drawDebugPanel();
   }
+
+  return;
+}
 
   if (!timerStarted) {
     timerStarted = true;
@@ -1354,12 +1463,12 @@ function draw() {
   drawHoles(HOLE_VISUAL_SCALE);
   drawFish();
   drawWalls();
-   
+
   pop();
 
   if (currentLevel !== 1) {
     drawHoleHitboxes();
-}
+  }
 
   // ---------------- GOAT UPDATE ----------------
   if (currentLevel === 3) {
@@ -1465,11 +1574,11 @@ function draw() {
     drawTutorialOverlay();
   }
 
-   if (level2CardActive) {
+  if (level2CardActive) {
     drawLevel2CardOverlay();
   }
 
-    if (level3CardActive) {
+  if (level3CardActive) {
     drawLevel3CardOverlay();
   }
 
@@ -1507,9 +1616,94 @@ function draw() {
       foundFishMessageActive = false;
     }
   }
+
+    // Draw this LAST so it stays above the gameplay.
+  if (debugMode) {
+    drawDebugPanel();
+  }
+  
 }
 
 function keyPressed() {
+
+  // ==========================================================
+  // DEBUG PANEL AND DEBUG SHORTCUTS
+  // ==========================================================
+
+  // D can always open or close the debug panel.
+  if (key === "y" || key === "Y") {
+    debugMode = !debugMode;
+    return;
+  }
+
+  // The remaining shortcuts only work while debug mode is open.
+  if (debugMode) {
+    // S = first/title page
+    if (key === "s" || key === "S") {
+      stopDebugSounds();
+
+      gameState = "start";
+      musicGateOpen = true;
+      gameEnded = false;
+      cursor(ARROW);
+      return;
+    }
+
+    // P = level picker
+    if (key === "p" || key === "P") {
+      stopDebugSounds();
+
+      gameState = "level_picker";
+      gameEnded = false;
+      timerStarted = false;
+      cursor(ARROW);
+      return;
+    }
+
+    // 1 = Level 1
+    if (key === "1") {
+      stopDebugSounds();
+      debugGoToLevel(1);
+      return;
+    }
+
+    // 2 = Level 2
+    if (key === "2") {
+      stopDebugSounds();
+      debugGoToLevel(2);
+      return;
+    }
+
+    // 3 = Level 3
+    if (key === "3") {
+      stopDebugSounds();
+      debugGoToLevel(3);
+      return;
+    }
+
+    // W = win screen
+    if (key === "w" || key === "W") {
+      stopDebugSounds();
+
+      gameEnded = false;
+      timerStarted = false;
+      gameState = "win";
+      cursor(ARROW);
+      return;
+    }
+
+    // L = lose screen
+    if (key === "l" || key === "L") {
+      stopDebugSounds();
+
+      gameEnded = true;
+      timerStarted = false;
+      gameState = "loss";
+      cursor(ARROW);
+      return;
+    }
+  }
+
   // STORY SCREEN → ENTER → next panel / leave
   if (gameState === "story" && keyCode === ENTER) {
     advanceStory();
@@ -1573,7 +1767,7 @@ function keyPressed() {
   // WIN SCREEN → ENTER → START
   if (gameState === "win" && keyCode === ENTER) {
     playButtonClickSound();
-    gameState = "start";
+    startLevelPickerTransition(); // was: gameState = "start";
     return;
   }
 
@@ -1589,7 +1783,16 @@ function keyPressed() {
   // LOSS SCREEN → ENTER → START
   if (gameState === "loss" && keyCode === ENTER) {
     playButtonClickSound();
-    gameState = "start";
+    resetGame();
+    startTime = millis();
+    timerStarted = true;
+    gameEnded = false;
+    finalTime = null;
+    tutorialActive = false;
+    postTutorialTimerActive = false;
+    tutorialIndex = 999;
+    gameState = "playing";
+    cursor(ARROW);
     return;
   }
 }
@@ -1697,7 +1900,12 @@ function drawTimer() {
   // 0-3). Shifting startTime forward by the elapsed frame time keeps
   // "elapsed" from advancing while paused, without needing a separate
   // paused-duration accumulator.
-   if (timerStarted && ((tutorialActive && tutorialIndex < 4) || level2CardActive || level3CardActive)) {
+  if (
+    timerStarted &&
+    ((tutorialActive && tutorialIndex < 4) ||
+      level2CardActive ||
+      level3CardActive)
+  ) {
     startTime += deltaTime;
   }
 
@@ -1765,27 +1973,30 @@ function updateWalkSound() {
   if (!walkSound || !walkSound.isLoaded()) return;
   if (!audioUnlocked || getAudioContext().state !== "running") return;
 
-  // Are any movement keys currently held? WASD + arrow keys.
   const movementHeld =
     keyIsDown(87) ||
     keyIsDown(65) ||
     keyIsDown(83) ||
-    keyIsDown(68) || // W A S D
+    keyIsDown(68) ||
     keyIsDown(UP_ARROW) ||
     keyIsDown(DOWN_ARROW) ||
     keyIsDown(LEFT_ARROW) ||
     keyIsDown(RIGHT_ARROW);
 
-  // Only during actual play — never on menus, mid-stomp, or in a hole.
   const onMenu =
     gameState === "start" ||
     gameState === "win" ||
     gameState === "loss" ||
     gameState === "transition" ||
-    gameState === "level_picker";
+    gameState === "level_picker" ||
+    gameState === "story";
 
   const walking =
-    movementHeld && !onMenu && !stompAnimating && holeState === "none";
+    movementHeld &&
+    !onMenu &&
+    !stompAnimating &&
+    holeState === "none" &&
+    !gameEnded; // ← gameEnded guard added
 
   if (walking) {
     if (!walkSound.isPlaying()) {
@@ -1799,7 +2010,13 @@ function updateWalkSound() {
 
 function handleInput() {
   // --- STOMP ---
-    if (keyIsDown(32) && !stompAnimating && !tutorialActive && !level2CardActive && !level3CardActive) {
+  if (
+    keyIsDown(32) &&
+    !stompAnimating &&
+    !tutorialActive &&
+    !level2CardActive &&
+    !level3CardActive
+  ) {
     stompAnimating = true;
     stompFrame = 0;
     stompFrameTimer = 0;
@@ -2049,13 +2266,16 @@ function checkFishCollision() {
   if (overlap) {
     fish.collected = true;
 
-    // Stop the near-distance loop instantly on collection
-    if (fishCallNear && fishCallNear.isPlaying()) fishCallNear.stop();
-
     // --- COLLECT SOUND ---
     if (fishCollect && fishCollect.isLoaded()) {
       fishCollect.setVolume(0.7);
       fishCollect.play();
+    }
+
+    // --- STOP FISH CALL SOUNDS ---
+    if (fishCallNear && fishCallNear.isPlaying()) fishCallNear.stop();
+    for (const c of fishCallFar) {
+      if (c && c.isPlaying()) c.stop();
     }
 
     // --- NEW POPUP TRIGGER ---
@@ -2107,10 +2327,7 @@ function checkHoleCollision() {
 
     // AABB overlap
     const overlap =
-      px < hx + hw &&
-      px + pw > hx &&
-      py < hy + hh &&
-      py + ph > hy;
+      px < hx + hw && px + pw > hx && py < hy + hh && py + ph > hy;
 
     if (overlap) {
       enterHole(h);
@@ -2370,7 +2587,7 @@ function drawBlizzardOverlay() {
 
   // Full white blizzard layer
   blizzardBuffer.noStroke();
-  blizzardBuffer.fill(255, 255, 255, 200); // change opacity back to 253 after debugging
+  blizzardBuffer.fill(255, 255, 255, 253); // change opacity back to 253 after debugging
   blizzardBuffer.rect(0, 0, width, height);
 
   // Convert penguin world → screen
@@ -2421,6 +2638,63 @@ function drawBlizzardOverlay() {
 
   // Draw final blizzard layer
   image(blizzardBuffer, 0, 0);
+}
+
+// ============================================================
+// DEBUG PANEL
+// ============================================================
+function drawDebugPanel() {
+  push();
+  resetMatrix();
+
+  rectMode(CORNER);
+  textAlign(LEFT, CENTER);
+  textStyle(NORMAL);
+  textFont(gameFont);
+
+  const panelX = 20;
+  const panelY = 20;
+  const panelW = 365;
+  const panelH = 250;
+
+  // Panel background
+  noStroke();
+  fill(5, 15, 35, 230);
+  rect(panelX, panelY, panelW, panelH, 12);
+
+  // Border
+  noFill();
+  stroke(130, 170, 230);
+  strokeWeight(3);
+  rect(panelX, panelY, panelW, panelH, 12);
+
+  // Title
+  noStroke();
+  fill(230, 242, 255);
+  textSize(34);
+  textStyle(BOLD);
+  text("DEBUG MODE", panelX + 20, panelY + 30);
+
+  // Shortcuts
+  textStyle(NORMAL);
+  textSize(22);
+
+  const shortcuts = [
+    "Y  — Close debug panel",
+    "S  — Title page",
+    "P  — Level picker",
+    "1  — Level 1",
+    "2  — Level 2",
+    "3  — Level 3",
+    "W  — Win screen",
+    "L  — Lose screen",
+  ];
+
+  for (let i = 0; i < shortcuts.length; i++) {
+    text(shortcuts[i], panelX + 20, panelY + 70 + i * 21);
+  }
+
+  pop();
 }
 
 function mousePressed() {

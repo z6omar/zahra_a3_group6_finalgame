@@ -112,7 +112,6 @@ function advanceStory() {
   }
 }
 
-const STORY_CONTINUE_BTN = { x: 0, y: 0, w: 260, h: 60 };
 const STORY_SKIP_BTN = { x: 0, y: 0, w: 160, h: 50 };
 
 // Rect for the Nth panel (0 or 1) on the current page.
@@ -158,6 +157,7 @@ function drawStoryScreen() {
     if (storyFadeToBlack >= 255) {
       storyEntering = false;
       if (storyAudio && storyAudio.isLoaded() && !storyAudio.isPlaying()) {
+        storyAudio.setVolume(3);
         storyAudio.play();
       }
     }
@@ -210,17 +210,7 @@ function drawStoryScreen() {
     image(img, zx, zy, zw, zh);
     pop();
   }
-  // --- BUTTONS ---
-  STORY_CONTINUE_BTN.x = width - 150;
-  STORY_CONTINUE_BTN.y = height - 45;
-  drawButton(
-    "Continue",
-    STORY_CONTINUE_BTN.x,
-    STORY_CONTINUE_BTN.y,
-    STORY_CONTINUE_BTN.w,
-    STORY_CONTINUE_BTN.h,
-    false,
-  );
+ 
 
   if (!isLastPage()) {
     STORY_SKIP_BTN.x = 120;
@@ -237,10 +227,7 @@ function drawStoryScreen() {
 }
 
 function handleStoryClick() {
-  if (hitButton(STORY_CONTINUE_BTN)) {
-    advanceStory();
-    return true;
-  }
+
   if (!isLastPage() && hitButton(STORY_SKIP_BTN)) {
     skipStory();
     return true;
