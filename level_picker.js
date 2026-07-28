@@ -130,10 +130,14 @@ function drawLevelCircle(cx, cy, radius, unlocked, index) {
   // --- CHECKMARK FOR COMPLETED LEVELS ---
   let levelKey = "level" + (index + 1);
   if (bestStars[levelKey] >= 1)  {
-      // Draw checkmark slightly to the right of the circle
-      let checkX = cx + radius - 42;
-      let checkY = cy - radius + 25;
-      image(check_icon, checkX, checkY, 70, 70);
+    // Draw checkmark slightly to the right of the circle
+    let checkX = cx + radius - 42;
+    let checkY = cy - radius + 25;
+    image(check_icon, checkX, checkY, 70, 70);
+    // --- SIMPLE LEVEL UNLOCK LOGIC ---
+    if (bestStars["level1"] >= 1) level1Complete = true;
+    if (bestStars["level2"] >= 1) level2Complete = true;
+    if (bestStars["level3"] >= 1) level3Complete = true;
   }
 }
 
@@ -216,6 +220,7 @@ let infoBtnSize = 70;
 
 if (mouseX > infoBtnX && mouseX < infoBtnX + infoBtnSize &&
     mouseY > infoBtnY && mouseY < infoBtnY + infoBtnSize) {
+  playButtonClickSound();
   infoOpen = !infoOpen;
   return;
 }
@@ -233,12 +238,15 @@ if (mouseX > infoBtnX && mouseX < infoBtnX + infoBtnSize &&
     if (d < radius) {
 
       if (!unlocked) {
+        playButtonClickSound();
         levelShake[i] = 10;
         activePanelIndex = -1;
         isClosingPanel = false;
         nextPanelIndex = -1;
         return;
       }
+
+      playButtonClickSound();
 
       if (activePanelIndex === i) {
         activePanelIndex = -1;
@@ -270,6 +278,17 @@ function startLevel(i) {
   currentLevel = i + 1;      // 2 for Level 2, 3 for Level 3
   loadLevel(currentLevel);   // build that level's background/walls/spikes/fish
   resetGame();
+
+  if (currentLevel === 2) {
+    startLevel2Intro();      // show avalanche + crevices cards before Level 2 begins
+    return;
+  }
+
+  if (currentLevel === 3) {
+    startLevel3Intro();      // show avalanche card before Level 3 begins
+    return;
+  }
+
   gameState = "playing";
   cursor(ARROW);
 }
@@ -283,7 +302,6 @@ tutorialAlpha = 0;
 tutorialIndex = 0;
 tutorialDelay = tutorialSteps[0].delay;
 }
-
 
 // For fastest times
 function formatTime(t) {
