@@ -113,6 +113,7 @@ function advanceStory() {
 }
 
 const STORY_SKIP_BTN = { x: 0, y: 0, w: 160, h: 50 };
+const STORY_BEGIN_BTN = { x: 0, y: 0, w: 260, h: 50 };
 
 // Rect for the Nth panel (0 or 1) on the current page.
 // Two-panel pages: side by side. One-panel page: centered, larger.
@@ -212,7 +213,7 @@ function drawStoryScreen() {
   }
  
 
-  if (!isLastPage()) {
+ if (!isLastPage()) {
     STORY_SKIP_BTN.x = 120;
     STORY_SKIP_BTN.y = height - 42;
     drawButton(
@@ -223,6 +224,17 @@ function drawStoryScreen() {
       STORY_SKIP_BTN.h,
       false,
     );
+  } else {
+    STORY_BEGIN_BTN.x = width - 160;
+    STORY_BEGIN_BTN.y = height - 42;
+    drawButton(
+      "Begin Journey",
+      STORY_BEGIN_BTN.x,
+      STORY_BEGIN_BTN.y,
+      STORY_BEGIN_BTN.w,
+      STORY_BEGIN_BTN.h,
+      false,
+    );
   }
 }
 
@@ -230,6 +242,11 @@ function handleStoryClick() {
 
   if (!isLastPage() && hitButton(STORY_SKIP_BTN)) {
     skipStory();
+    return true;
+  }
+
+  if (isLastPage() && hitButton(STORY_BEGIN_BTN)) {
+    advanceStory();
     return true;
   }
   return false;

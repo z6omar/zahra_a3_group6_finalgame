@@ -191,12 +191,10 @@ function drawInfoPanel(index) {
   const drawOrder = [0, 2, 1];
 
   for (let i = 0; i < 3; i++) {
-    let starIndex = drawOrder[i]; // remap logical star index
-
     let sx = startX + i * 82;
     let yOffset = i === 1 ? -10 : 0; // middle star visually higher
 
-    if (starIndex < bestStars["level" + (index + 1)]) {
+    if (i < bestStars["level" + (index + 1)]) {
       image(starFilledImg, sx, starY + yOffset, starW, starH);
     } else {
       image(starOutlineImg, sx, starY + yOffset, starW, starH);

@@ -13,7 +13,6 @@ let tutorialBtnPressed = false;
 
 // ---- Tutorial assets ----
 let avalancheCard;
-let flashlightCard;
 let spaceDialogueCard;
 let hurryCard;
 let instructionDirectionCard;
@@ -26,7 +25,7 @@ let avalancheFrame = 0;
 let avalancheFrameTimer = 0;
 
 // ---- Tutorial steps (same order, all delays are 0) ----
-let tutorialSteps = [0, 1, 2, 3, 4];
+let tutorialSteps = [0, 1, 2, 3];
 
 // ============================================================
 // HOOKS CALLED FROM sketch.js
@@ -34,7 +33,6 @@ let tutorialSteps = [0, 1, 2, 3, 4];
 
 function preloadTutorialAssets() {
   hurryCard = loadImage("assets/images/hurry_card.png");
-  flashlightCard = loadImage("assets/images/flashlight_card.png");
   instructionDirectionCard = loadImage("assets/images/instruction_directioncard.png");
   avalancheCard = loadImage("assets/images/avalanche_card.png");
   spaceDialogueCard = loadImage("assets/images/space_dialoguecard.png");
@@ -63,11 +61,11 @@ function updatePostTutorialTimer() {
 
   postTutorialTimer++;
 
-  if (postTutorialTimer >= postTutorialDelayFrames) {
+    if (postTutorialTimer >= postTutorialDelayFrames) {
     postTutorialTimerActive = false;
     tutorialActive = true;
     gameState = "tutorial";
-    tutorialIndex = 4;
+    tutorialIndex = 3;
     tutorialDelay = 0;
     playCardSwitchSound();
   }
@@ -95,7 +93,7 @@ function handleTutorialKeyPressed() {
 
   // Flashlight card (index 3) was just dismissed:
   // start the game timer and return to gameplay
-  if (tutorialIndex === 4) {
+  if (tutorialIndex === 3) {
     if (!timerStarted) {
       startTime = millis();
       timerStarted = true;
@@ -345,29 +343,8 @@ function drawTutorialOverlay() {
     return;
   }
 
-  if (tutorialIndex === 3) {
-    push();
-    imageMode(CENTER);
-
-    const cardW = min(640, width - 280);
-    const cardH =
-      cardW *
-      (flashlightCard.height / flashlightCard.width);
-
-    image(
-      flashlightCard,
-      width / 2,
-      height / 2 + 20,
-      cardW,
-      cardH
-    );
-
-    pop();
-    return;
-  }
-
   // Space warning dialogue
-  if (tutorialIndex === 4) {
+  if (tutorialIndex === 3) {
     drawDialogueCard(spaceDialogueCard);
     return;
   }

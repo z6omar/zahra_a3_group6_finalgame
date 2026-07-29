@@ -16,6 +16,7 @@ let levelPickerBg;
 // AUDIO
 let introMusic;
 let gameMusic;
+let levelPickerMusic;
 let fishCollect;
 let goatSound;
 let timerSound;
@@ -635,6 +636,7 @@ function preload() {
 
   // SOUNDS
   introMusic = loadSound("assets/sounds/introscreen.mp3");
+  levelPickerMusic = loadSound("assets/sounds/levelpicker_background.mp3");
   gameMusic = loadSound("assets/sounds/game_background_music.mp3");
   fishCollect = loadSound("assets/sounds/fish_collect_sound.mp3");
   goatSound = loadSound("assets/sounds/goat_sound.mp3");
@@ -1219,7 +1221,7 @@ function updateTimerSound() {
   if (!audioUnlocked || getAudioContext().state !== "running") return;
 
   const timerPaused =
-    (tutorialActive && tutorialIndex < 4) ||
+    (tutorialActive && tutorialIndex < 3) ||
     level2CardActive ||
     level3CardActive;
   const countdownRunning =
@@ -1248,6 +1250,7 @@ function updateMusic() {
   if (getAudioContext().state !== "running") return;
 
   const wantIntro = gameState === "start";
+  const wantLevelPicker = gameState === "level_picker";
   const wantGame = ![
     "start",
     "win",
@@ -1256,7 +1259,7 @@ function updateMusic() {
     "level_picker",
   ].includes(gameState);
 
-  // --- INTRO TRACK (title screen only) ---
+  // --- INTRO TRACK ---
   if (introMusic && introMusic.isLoaded()) {
     if (wantIntro && !introMusic.isPlaying()) {
       introMusic.setVolume(0.5);
@@ -1266,10 +1269,20 @@ function updateMusic() {
     }
   }
 
+  // --- LEVEL PICKER TRACK ---
+  if (levelPickerMusic && levelPickerMusic.isLoaded()) {
+    if (wantLevelPicker && !levelPickerMusic.isPlaying()) {
+      levelPickerMusic.setVolume(0.35);
+      levelPickerMusic.loop();
+    } else if (!wantLevelPicker && levelPickerMusic.isPlaying()) {
+      levelPickerMusic.stop();
+    }
+  }
+
   // --- GAMEPLAY TRACK ---
   if (gameMusic && gameMusic.isLoaded()) {
     if (wantGame && !gameMusic.isPlaying()) {
-      gameMusic.setVolume(0.35); // sits under the intro so it doesn't dominate
+      gameMusic.setVolume(0.35);
       gameMusic.loop();
     } else if (!wantGame && gameMusic.isPlaying()) {
       gameMusic.stop();
@@ -1902,7 +1915,7 @@ function drawTimer() {
   // paused-duration accumulator.
   if (
     timerStarted &&
-    ((tutorialActive && tutorialIndex < 4) ||
+    ((tutorialActive && tutorialIndex < 3) ||
       level2CardActive ||
       level3CardActive)
   ) {
