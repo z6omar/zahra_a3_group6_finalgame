@@ -1347,6 +1347,12 @@ function drawStartScreen() {
   // --- CLICK-TO-BEGIN GATE ---
   if (!musicGateOpen) {
     push();
+    textAlign(LEFT, BOTTOM);
+    textSize(15);
+    fill(0);
+    text("Press Y to open debug panel", 20, height - 18);
+    pop();
+    push();
     noStroke();
     fill(0, 0, 0, 89); // 35% of 255
     rect(0, 0, width, height);
