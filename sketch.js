@@ -3141,7 +3141,7 @@ function drawDebugPanel() {
   textSize(22);
 
   const shortcuts = [
-    "Y  — Close debug panel",
+    "Y  — Close/Open debug panel",
     "S  — Title page",
     "P  — Level picker",
     "1  — Level 1",
