@@ -4,6 +4,9 @@ let infoOpen = false;
 const INFO_CLOSED_X = -1100; // off screen left
 const INFO_OPEN_X = 100; // where box stops
 const INFO_SPEED = 50;
+const CLOSE_BTN_SIZE = 60;
+const CLOSE_BTN_OFFSET_X = 70;
+const CLOSE_BTN_OFFSET_Y = 100;
 let infoBoxX = INFO_CLOSED_X;
 
 // Level picker assets
@@ -11,6 +14,7 @@ let currentLevel = 1;
 let lock_icon;
 let check_icon;
 let info_box;
+let xButtonImg;
 let level1Complete = false;
 let level2Complete = false;
 let level3Complete = false;
@@ -43,6 +47,12 @@ let levelPanels = [
   },
 ];
 
+// How to Play button position and size
+const HOW_TO_PLAY_X = 25;
+const HOW_TO_PLAY_Y = 25;
+const HOW_TO_PLAY_W = 280;
+const HOW_TO_PLAY_H = 70;
+
 let activePanelIndex = -1;
 let nextPanelIndex = -1;
 let isClosingPanel = false;
@@ -55,8 +65,8 @@ function preloadLevelPickerAssets() {
   info_box = loadImage("assets/images/level_info_box.png");
   popUpCard = loadImage("assets/images/pop_up_card.png");
   foundPopupCard = loadImage("assets/images/Foundpopup_card.png");
-  infoButtonImg = loadImage("assets/images/info_button.png");
   wideBoxImg = loadImage("assets/images/bigger_box.png");
+  xButtonImg = loadImage("assets/images/x_button.png");
 }
 
 function drawLevelPickerScreen() {
@@ -219,8 +229,15 @@ function drawInfoPanel(index) {
   let btnX = x + PANEL_W / 2;
   let btnY = y + PANEL_H - 100;
 
-  // get hover from PLAY button
-  let hovered = drawButton("PLAY", btnX, btnY, 220, 60, playBtnPressed[index]);
+ // Determine if the player has played this level before
+let levelKey = "level" + (index + 1);
+let hasPlayed = fastestTimes[levelKey] !== null || bestStars[levelKey] > 0;
+
+// Button label
+let btnLabel = hasPlayed ? "PLAY AGAIN" : "PLAY";
+
+// Draw button
+let hovered = drawButton(btnLabel, btnX, btnY, 220, 60, playBtnPressed[index]);
 
   // store hover if you need it later
   levelPanels[index].playHover = hovered;
@@ -232,20 +249,42 @@ function drawInfoPanel(index) {
 }
 
 function handleLevelPickerClick() {
-  let infoBtnX = 25;
-  let infoBtnY = 25;
-  let infoBtnSize = 70;
+
+// -----------------------
+// Close Instructions Box
+// -----------------------
+if (infoOpen) {
+
+  let boxW = 1000;
+  let boxH = 700;
+  let boxX = infoBoxX;
+  let boxY = height / 2 - boxH / 2;
+
+  let closeX = boxX + boxW - CLOSE_BTN_SIZE - CLOSE_BTN_OFFSET_X;
+  let closeY = boxY + CLOSE_BTN_OFFSET_Y;
 
   if (
-    mouseX > infoBtnX &&
-    mouseX < infoBtnX + infoBtnSize &&
-    mouseY > infoBtnY &&
-    mouseY < infoBtnY + infoBtnSize
+    mouseX >= closeX &&
+    mouseX <= closeX + CLOSE_BTN_SIZE &&
+    mouseY >= closeY &&
+    mouseY <= closeY + CLOSE_BTN_SIZE
   ) {
     playButtonClickSound();
-    infoOpen = !infoOpen;
+    infoOpen = false;
     return;
   }
+}
+
+if (
+  mouseX >= HOW_TO_PLAY_X &&
+  mouseX <= HOW_TO_PLAY_X + HOW_TO_PLAY_W &&
+  mouseY >= HOW_TO_PLAY_Y &&
+  mouseY <= HOW_TO_PLAY_Y + HOW_TO_PLAY_H
+) {
+  playButtonClickSound();
+  infoOpen = !infoOpen;
+  return;
+}
 
   let cx = [570, 565, 531];
   let cy = [158, 405, 640];
@@ -286,6 +325,32 @@ function handleLevelPickerClick() {
       return;
     }
   }
+  // --- CHECK PLAY BUTTON CLICK ---
+if (activePanelIndex !== -1) {
+  let panel = levelPanels[activePanelIndex];
+
+  let x = panel.x;
+  let y = 175;
+  const PANEL_W = 500;
+  const PANEL_H = 500;
+
+  let btnX = x + PANEL_W / 2 - 110; // center minus half width
+  let btnY = y + PANEL_H - 130;
+  let btnW = 220;
+  let btnH = 60;
+
+  if (
+    mouseX > btnX &&
+    mouseX < btnX + btnW &&
+    mouseY > btnY &&
+    mouseY < btnY + btnH
+  ) {
+    playButtonClickSound();
+    startLevel(activePanelIndex);
+    return;
+  }
+}
+
 }
 
 function startLevel(i) {
@@ -331,19 +396,54 @@ function formatTime(t) {
 }
 
 function drawObjectiveInfoButton() {
-  let btnX = 25;
-  let btnY = 25;
-  let btnSize = 100;
+  if (!howToPlayButtonImg) return;
 
-  image(infoButtonImg, btnX, btnY, btnSize, btnSize);
+  let hovered =
+    mouseX >= HOW_TO_PLAY_X &&
+    mouseX <= HOW_TO_PLAY_X + HOW_TO_PLAY_W &&
+    mouseY >= HOW_TO_PLAY_Y &&
+    mouseY <= HOW_TO_PLAY_Y + HOW_TO_PLAY_H;
 
-  if (
-    mouseX > btnX &&
-    mouseX < btnX + btnSize &&
-    mouseY > btnY &&
-    mouseY < btnY + btnSize
-  ) {
+  if (hovered) {
     cursor(HAND);
+  }
+
+  /*
+    Source locations inside how_to_play_button.png:
+
+    Default button:
+    x = 180, y = 90, width = 1180, height = 280
+
+    Hover button:
+    x = 180, y = 420, width = 1180, height = 290
+  */
+
+  if (hovered) {
+    // Draw hover state from the bottom portion of the sprite sheet
+    image(
+      howToPlayButtonImg,
+      HOW_TO_PLAY_X,
+      HOW_TO_PLAY_Y,
+      HOW_TO_PLAY_W,
+      HOW_TO_PLAY_H,
+      180,
+      420,
+      1180,
+      290
+    );
+  } else {
+    // Draw default state from the top portion of the sprite sheet
+    image(
+      howToPlayButtonImg,
+      HOW_TO_PLAY_X,
+      HOW_TO_PLAY_Y,
+      HOW_TO_PLAY_W,
+      HOW_TO_PLAY_H,
+      180,
+      90,
+      1180,
+      280
+    );
   }
 }
 
@@ -370,6 +470,32 @@ function drawObjectiveInfoBox() {
   let rowCenter = centerX;
 
   image(wideBoxImg, boxX, boxY, boxW, boxH);
+
+// -----------------------
+// Close Button
+// -----------------------
+let closeX =
+  boxX + boxW - CLOSE_BTN_SIZE - CLOSE_BTN_OFFSET_X;
+
+let closeY =
+  boxY + CLOSE_BTN_OFFSET_Y;
+
+image(
+  xButtonImg,
+  closeX,
+  closeY,
+  CLOSE_BTN_SIZE,
+  CLOSE_BTN_SIZE
+);
+
+if (
+  mouseX >= closeX &&
+  mouseX <= closeX + CLOSE_BTN_SIZE &&
+  mouseY >= closeY &&
+  mouseY <= closeY + CLOSE_BTN_SIZE
+) {
+  cursor(HAND);
+}
 
   fill(255);
   noStroke();

@@ -75,23 +75,16 @@ function updatePostTutorialTimer() {
 // INPUT HANDLING (returns true if the event was consumed)
 // ============================================================
 
-function handleTutorialKeyPressed() {
-  if (gameState !== "tutorial" || keyCode !== ENTER) return false;
-
-  // First Enter: remove instruction and reveal avalanche card
-  if (enterInstructionActive) {
-    enterInstructionActive = false;
-    tutorialDelay = 0;
-    return true;
-  }
-
-  // Ignore Enter while another tutorial delay is active
-  if (tutorialDelay > 0) return true;
+// Shared logic for advancing to the next tutorial card. Called by both
+// ENTER key presses and mouse clicks so they behave identically.
+function advanceTutorialCard() {
+  // Ignore while another tutorial delay is active
+  if (tutorialDelay > 0) return;
 
   // Advance to the next card
   tutorialIndex++;
 
-  // Flashlight card (index 3) was just dismissed:
+  // Direction card (index 2) was just dismissed:
   // start the game timer and return to gameplay
   if (tutorialIndex === 3) {
     if (!timerStarted) {
@@ -104,63 +97,48 @@ function handleTutorialKeyPressed() {
     postTutorialTimerActive = true;
     postTutorialTimer = 0;
     cursor(ARROW);
-    return true;
+    return;
   }
 
   if (tutorialIndex < tutorialSteps.length) {
     tutorialAlpha = 255;
     tutorialDelay = 0;
     playCardSwitchSound();
-    return true;
+    return;
   }
 
   tutorialActive = false;
   gameState = "playing";
+}
+
+function handleTutorialKeyPressed() {
+  if (gameState !== "tutorial" || keyCode !== ENTER) return false;
+
+  // First Enter: remove instruction and reveal avalanche card
+  if (enterInstructionActive) {
+    enterInstructionActive = false;
+    tutorialDelay = 0;
+    return true;
+  }
+
+  advanceTutorialCard();
   return true;
 }
 
 function handleTutorialMousePressed() {
   if (gameState !== "tutorial") return false;
 
-  // Dialogue cards are advanced with ENTER, not the mouse
-  if (tutorialActive && (enterInstructionActive || tutorialIndex <= 4)) {
+  // Clicking anywhere dismisses the initial "press enter" instruction,
+  // same as pressing ENTER.
+  if (enterInstructionActive) {
+    enterInstructionActive = false;
+    tutorialDelay = 0;
     return true;
   }
 
-  // --- TUTORIAL OK BUTTON CLICK ---
+  // Clicking anywhere advances the current dialogue card, same as ENTER.
   if (tutorialActive) {
-    let x = width / 2 + 280;
-    let y = height * 0.62;
-    let w = 100;
-    let h = 45;
-    let offsetY = tutorialBtnPressed ? 4 : 0;
-    let hover =
-      mouseX > x - w / 2 &&
-      mouseX < x + w / 2 &&
-      mouseY > y - h / 2 + offsetY &&
-      mouseY < y + h / 2 + offsetY;
-
-    if (hover) {
-      tutorialBtnPressed = true;
-
-      // START TIMER WHEN CLICKING OK ON THE FLASHLIGHT CARD
-      if (tutorialIndex === 3 && !timerStarted) {
-        startTime = millis();
-        timerStarted = true;
-      }
-
-      // advance tutorial
-      tutorialIndex++;
-
-      if (tutorialIndex >= tutorialSteps.length) {
-        tutorialActive = false;
-        cursor(ARROW);
-        gameState = "playing";
-      } else {
-        tutorialDelay = 0;
-        playCardSwitchSound();
-      }
-    }
+    advanceTutorialCard();
   }
 
   return true;
@@ -168,43 +146,6 @@ function handleTutorialMousePressed() {
 
 function handleTutorialMouseReleased() {
   if (gameState !== "tutorial") return false;
-
-  if (tutorialActive && (enterInstructionActive || tutorialIndex <= 4)) {
-    tutorialBtnPressed = false;
-    return true;
-  }
-
-  // --- TUTORIAL CONTINUE BUTTON RELEASE ---
-  let bx = width / 2, by = height * 0.60, bw = 320, bh = 64;
-
-  let hover =
-    mouseX > bx - bw / 2 && mouseX < bx + bw / 2 &&
-    mouseY > by - bh / 2 && mouseY < by + bh / 2;
-
-  if (tutorialBtnPressed && hover && tutorialDelay <= 0) {
-    if (tutorialIndex === 2) {
-      startTime = millis();
-      timerStarted = true;
-    }
-
-    tutorialIndex++;
-
-    if (tutorialIndex === 3) {
-      tutorialActive = false;
-      gameState = "playing";
-      postTutorialTimerActive = true;
-      postTutorialTimer = 0;
-    } else if (tutorialIndex < tutorialSteps.length) {
-      tutorialAlpha = 255;
-      tutorialDelay = 0;
-      playCardSwitchSound();
-    } else {
-      tutorialActive = false;
-      gameState = "playing";
-    }
-  }
-
-  tutorialBtnPressed = false;
   return true;
 }
 
@@ -222,9 +163,9 @@ function drawEnterInstruction() {
 
   const y = height / 2 + 20;
 
-  const beforeText = "PRESS ";
+   const beforeText = "PRESS ";
   const keyText = "ENTER";
-  const afterText = " TO CONTINUE";
+  const afterText = " OR CLICK THE MOUSE TO CONTINUE";
 
   const keyPadding = 14;
   const beforeW = textWidth(beforeText);

@@ -66,6 +66,22 @@ function handleLevel2CardKeyPressed() {
   return true;
 }
 
+function handleLevel2CardMousePressed() {
+  if (gameState !== "level2_card") return false;
+
+  level2CardStep++;
+
+  if (level2CardStep >= 2) {
+    level2CardActive = false;
+    gameState = "playing";
+    cursor(ARROW);
+  } else {
+    playCardSwitchSound();
+  }
+
+  return true;
+}
+
 // Draws the card — reuses drawDialogueCard() already defined in tutorial_cards.js
 function drawLevel2CardOverlay() {
   if (level2CardStep === 0) {

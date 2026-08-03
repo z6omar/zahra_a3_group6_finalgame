@@ -40,6 +40,7 @@ let startBtnPressed = false;
 let winBtnPressed = false;
 let lossBtnPressed = false;
 let levelPickerBtnPressed = false;
+let howToPlayButtonImg;
 
 // Background stuff
 const VIEW_W = 1200;
@@ -633,6 +634,7 @@ function preload() {
   winBg = loadImage("assets/images/win_screen.png");
   lossBg = loadImage("assets/images/loss_screen.png");
   transitionPage = loadImage("assets/images/transition_page.png");
+  howToPlayButtonImg = loadImage("assets/images/how_to_play_button.png");
 
   // SOUNDS
   introMusic = loadSound("assets/sounds/introscreen.mp3");
@@ -909,11 +911,65 @@ function drawFishIconUI() {
   let iconW = 80; // width
   let iconH = 50; // height
 
+  const promptText = fish.collected
+    ? "Take me to the exit!"
+    : "Don't forget me!";
+
+  // --- Measure text so the panel fits it ---
+  push();
+  textFont(gameFont);
+  textStyle(BOLD);
+  textSize(28);
+  const textW = textWidth(promptText);
+  pop();
+
+  // --- Panel dimensions (wraps icon + text) ---
+  const panelPadX = 16;
+  const panelPadY = 8;
+  const iconTextGap = 12;
+  const panelX = x - panelPadX;
+  const panelY = y - panelPadY;
+  const panelW = iconW + iconTextGap + textW + panelPadX * 2;
+  const panelH = iconH + panelPadY * 2;
+
+  push();
+  rectMode(CORNER);
+
+  // light gray fill
+  noStroke();
+  fill(230, 230, 235, 235);
+  rect(panelX, panelY, panelW, panelH, panelH / 2);
+
+  // dashed border
+  noFill();
+  stroke(90, 110, 160);
+  strokeWeight(2);
+  drawingContext.setLineDash([6, 5]);
+  rect(panelX, panelY, panelW, panelH, panelH / 2);
+  drawingContext.setLineDash([]);
+  pop();
+
+  // --- Fish icon ---
   if (fish.collected) {
     image(fishIconFilled, x, y, iconW, iconH);
   } else {
     image(fishIconOutline, x, y, iconW, iconH);
   }
+
+  // --- Reminder text beside the fish icon ---
+  push();
+  textFont(gameFont);
+  textStyle(BOLD);
+  textSize(28);
+  textAlign(LEFT, CENTER);
+
+  const textX = x + iconW + iconTextGap;
+  const textY = y + iconH / 2 - 3;
+
+  fill(50, 90, 200); // blue, matching the reference
+  noStroke();
+  text(promptText, textX, textY);
+  pop();
 }
 
 function drawFishCompass() {
@@ -1634,7 +1690,6 @@ function draw() {
   if (debugMode) {
     drawDebugPanel();
   }
-  
 }
 
 function keyPressed() {
@@ -1835,6 +1890,11 @@ function resetGame() {
   randomizeFishPosition();
   lastNearCallTime = 0;
   comeFindMePlayed = false;
+
+  needFishMessageActive = false;
+  needFishMessageTimer = 0;
+  foundFishMessageActive = false;
+  foundFishMessageTimer = 0;
 
   // HOLE SEQUENCE RESET
   holeState = "none";
@@ -2724,8 +2784,11 @@ function mousePressed() {
     return;
   }
 
-  // --- TUTORIAL MOUSE INPUT (tutorial_cards.js) ---
   if (handleTutorialMousePressed()) return;
+  
+  if (handleLevel2CardMousePressed()) return;
+
+  if (handleLevel3CardMousePressed()) return;
 
   // --- PLAY BUTTON PRESS (inside info panel) ---
   if (gameState === "level_picker" && activePanelIndex !== -1) {
