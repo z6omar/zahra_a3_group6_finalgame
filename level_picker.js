@@ -378,6 +378,7 @@ function startLevel(i) {
 }
 
 function startLevel1() {
+  currentLevel = 1;
   loadLevel(1);
   resetGame(); // resets timer, penguin, stomp, etc.
   gameState = "tutorial";

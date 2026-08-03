@@ -127,12 +127,17 @@ function drawStopSignCard() {
     alpha = map(t, 0, 1, 255, 0);
     alpha = constrain(alpha, 0, 255);
   } else {
-    // Animation finished — end the level3 intro sequence
-    level3CardActive = false;
-    gameState = "playing";
-    cursor(ARROW);
-    return;
-  }
+  // Animation finished — end the Level 3 intro sequence.
+  level3CardActive = false;
+
+  // Start the Level 3 timer only after every intro card is finished.
+  startTime = millis();
+  timerStarted = true;
+
+  gameState = "playing";
+  cursor(ARROW);
+  return;
+}
 
   push();
   imageMode(CENTER);

@@ -42,9 +42,49 @@ let lossBtnPressed = false;
 let levelPickerBtnPressed = false;
 let howToPlayButtonImg;
 
+// Pause/settings menu
+let settingsButtonImg;
+let isGamePaused = false;
+let pauseStartedAt = 0;
+let resumeBtnPressed = false;
+let restartBtnPressed = false;
+let homeBtnPressed = false;
+
+
 // Background stuff
 const VIEW_W = 1200;
 const VIEW_H = 780;
+
+// Settings button position and size
+const SETTINGS_BTN = {
+  x: VIEW_W - 130,
+  y: 20,
+  w: 130,
+  h: 90
+};
+
+// Pause menu buttons
+const PAUSE_RESUME_BTN = {
+  x: VIEW_W / 2,
+  y: 360,
+  w: 340,
+  h: 70
+};
+
+const PAUSE_RESTART_BTN = {
+  x: VIEW_W / 2,
+  y: 455,
+  w: 340,
+  h: 70
+};
+
+const PAUSE_HOME_BTN = {
+  x: VIEW_W / 2,
+  y: 550,
+  w: 340,
+  h: 70
+};
+
 let WORLD_W;
 let WORLD_H;
 let WORLD_W_SCALED;
@@ -484,31 +524,68 @@ function stopDebugSounds() {
 // DEBUG: JUMP DIRECTLY TO A LEVEL
 // ============================================================
 function debugGoToLevel(levelNum) {
-  // Load the correct background, walls, spikes, holes, fish, etc.
-  loadLevel(levelNum);
+  stopDebugSounds();
 
-  // Reset player, timer, fish and level-specific systems.
+  // Close the pause menu.
+  isGamePaused = false;
+  pauseStartedAt = 0;
+
+  // This must happen before loadLevel() and resetGame().
+  currentLevel = levelNum;
+
+  // Load all level-specific content.
+  loadLevel(currentLevel);
+
+  // Reset the player, timer, fish, holes, tutorials and goat state.
   resetGame();
 
-  // Skip all introduction/tutorial cards.
-  tutorialActive = false;
-  postTutorialTimerActive = false;
-  tutorialIndex = 999;
-
-  // Skip the Level 2 introduction card.
+  // Clear tutorial-card states from the other levels.
   level2CardActive = false;
+  level2CardStep = 0;
 
-  // Skip the Level 3 introduction card.
   level3CardActive = false;
+  level3CardStep = 0;
+  stopSignTimer = 0;
 
-  // Start the timer from this moment.
-  startTime = millis();
-  timerStarted = true;
+  // Reset the Level 3 goat completely.
+  goatActive = false;
+  goatInitialized = false;
+  goatTriggered = false;
+  goatTriggerTime = 0;
+  goatFrameIndex = 0;
+  goatFrameTimer = 0;
+  goatX = 0;
+  goatY = 0;
+
   gameEnded = false;
   finalTime = null;
+  player.isMoving = false;
 
-  // Enter gameplay.
-  gameState = "playing";
+  // Start the correct tutorial sequence.
+  if (currentLevel === 1) {
+    resetTutorial();
+
+    tutorialActive = true;
+    enterInstructionActive = true;
+    tutorialIndex = 0;
+    tutorialDelay = 0;
+
+    // Level 1 timer begins after the direction card is dismissed.
+    timerStarted = false;
+    startTime = 0;
+
+    gameState = "tutorial";
+  } else if (currentLevel === 2) {
+    timerStarted = false;
+    startTime = 0;
+
+    startLevel2Intro();
+  } else if (currentLevel === 3) {
+    timerStarted = false;
+    startTime = 0;
+
+    startLevel3Intro();
+  }
 
   cursor(ARROW);
 }
@@ -635,7 +712,7 @@ function preload() {
   lossBg = loadImage("assets/images/loss_screen.png");
   transitionPage = loadImage("assets/images/transition_page.png");
   howToPlayButtonImg = loadImage("assets/images/how_to_play_button.png");
-
+  settingsButtonImg = loadImage("assets/images/settings_button.png");
   // SOUNDS
   introMusic = loadSound("assets/sounds/introscreen.mp3");
   levelPickerMusic = loadSound("assets/sounds/levelpicker_background.mp3");
@@ -879,6 +956,245 @@ function drawButton(label, x, y, w, h, pressedFlag) {
   fill(210, 230, 255);
   text(label, floor(x), floor(y + offsetY - 5));
   return hover;
+}
+
+// ============================================================
+// SETTINGS BUTTON AND PAUSE MENU
+// ============================================================
+
+function isSettingsButtonHovered() {
+  return (
+    mouseX >= SETTINGS_BTN.x &&
+    mouseX <= SETTINGS_BTN.x + SETTINGS_BTN.w &&
+    mouseY >= SETTINGS_BTN.y &&
+    mouseY <= SETTINGS_BTN.y + SETTINGS_BTN.h
+  );
+}
+
+function drawSettingsButton() {
+  if (!settingsButtonImg) return;
+
+  const hovered = isSettingsButtonHovered();
+
+  if (hovered) {
+    cursor(HAND);
+  }
+
+  push();
+
+  imageMode(CORNER);
+
+  // Slightly enlarge the icon while hovering.
+  const hoverScale = hovered ? 1.08 : 1;
+
+  const drawW = SETTINGS_BTN.w * hoverScale;
+  const drawH = SETTINGS_BTN.h * hoverScale;
+
+  const drawX =
+    SETTINGS_BTN.x - (drawW - SETTINGS_BTN.w) / 2;
+
+  const drawY =
+    SETTINGS_BTN.y - (drawH - SETTINGS_BTN.h) / 2;
+
+  image(
+    settingsButtonImg,
+    drawX,
+    drawY,
+    drawW,
+    drawH
+  );
+
+  pop();
+}
+
+function openPauseMenu() {
+  if (isGamePaused) return;
+
+  isGamePaused = true;
+  pauseStartedAt = millis();
+
+  player.isMoving = false;
+
+  // Stop movement and action sounds while paused.
+  if (walkSound && walkSound.isPlaying()) {
+    walkSound.stop();
+  }
+
+  if (stompSound && stompSound.isPlaying()) {
+    stompSound.stop();
+  }
+
+  if (stompAura && stompAura.isPlaying()) {
+    stompAura.stop();
+  }
+
+  cursor(ARROW);
+}
+
+function closePauseMenu() {
+  if (!isGamePaused) return;
+
+  // Add the time spent paused to startTime so the timer does not
+  // count the paused duration.
+  if (timerStarted) {
+    const pausedDuration = millis() - pauseStartedAt;
+    startTime += pausedDuration;
+  }
+
+  isGamePaused = false;
+  pauseStartedAt = 0;
+
+  resumeBtnPressed = false;
+  restartBtnPressed = false;
+  homeBtnPressed = false;
+
+  cursor(ARROW);
+}
+
+function pointInsidePauseButton(button) {
+  return (
+    mouseX >= button.x - button.w / 2 &&
+    mouseX <= button.x + button.w / 2 &&
+    mouseY >= button.y - button.h / 2 &&
+    mouseY <= button.y + button.h / 2
+  );
+}
+
+function drawPauseMenu() {
+  push();
+
+  // Darken the game but keep the level visible underneath.
+  noStroke();
+  fill(0, 0, 20, 165);
+  rect(0, 0, width, height);
+
+  // Optional central pause panel.
+  const panelW = 500;
+  const panelH = 520;
+  const panelX = width / 2 - panelW / 2;
+  const panelY = 150;
+
+  fill(15, 30, 80, 235);
+  stroke(130, 180, 245);
+  strokeWeight(4);
+  rect(panelX, panelY, panelW, panelH, 20);
+
+  // Light highlight inside the panel.
+  noStroke();
+  fill(255, 255, 255, 25);
+  rect(panelX + 8, panelY + 8, panelW - 16, 25, 14);
+
+  // PAUSED heading.
+  textFont(gameFont);
+  textStyle(BOLD);
+  textAlign(CENTER, CENTER);
+  textSize(80);
+
+  // Heading shadow.
+  fill(5, 15, 55);
+  text("PAUSED", width / 2 + 4, 245 + 4);
+
+  // Heading text.
+  fill(225, 240, 255);
+  text("PAUSED", width / 2, 245);
+
+  // Reuse your existing game buttons.
+  const resumeHovered = drawButton(
+    "Resume",
+    PAUSE_RESUME_BTN.x,
+    PAUSE_RESUME_BTN.y,
+    PAUSE_RESUME_BTN.w,
+    PAUSE_RESUME_BTN.h,
+    resumeBtnPressed
+  );
+
+  const restartHovered = drawButton(
+    "Restart",
+    PAUSE_RESTART_BTN.x,
+    PAUSE_RESTART_BTN.y,
+    PAUSE_RESTART_BTN.w,
+    PAUSE_RESTART_BTN.h,
+    restartBtnPressed
+  );
+
+  const homeHovered = drawButton(
+    "Level Picker",
+    PAUSE_HOME_BTN.x,
+    PAUSE_HOME_BTN.y,
+    PAUSE_HOME_BTN.w,
+    PAUSE_HOME_BTN.h,
+    homeBtnPressed
+  );
+
+  if (resumeHovered || restartHovered || homeHovered) {
+    cursor(HAND);
+  }
+
+  pop();
+}
+
+function restartCurrentLevel() {
+  // Close the menu without adding the paused duration because the
+  // timer is about to restart completely.
+  isGamePaused = false;
+  pauseStartedAt = 0;
+
+  resumeBtnPressed = false;
+  restartBtnPressed = false;
+  homeBtnPressed = false;
+
+  // Rebuild the currently selected level.
+  loadLevel(currentLevel);
+
+  // Reset only the current attempt.
+  resetGame();
+
+  // Skip the tutorial/introduction cards when restarting from pause.
+  tutorialActive = false;
+  postTutorialTimerActive = false;
+  tutorialIndex = 999;
+
+  level2CardActive = false;
+  level3CardActive = false;
+
+  // Begin a fresh timer for this attempt.
+  startTime = millis();
+  timerStarted = true;
+  gameEnded = false;
+  finalTime = null;
+
+  gameState = "playing";
+  cursor(ARROW);
+}
+
+function returnToHomeFromPause() {
+  isGamePaused = false;
+  pauseStartedAt = 0;
+
+  resumeBtnPressed = false;
+  restartBtnPressed = false;
+  homeBtnPressed = false;
+
+  player.isMoving = false;
+
+  // Stop temporary gameplay sounds.
+  stopDebugSounds();
+
+  timerStarted = false;
+  gameEnded = false;
+  finalTime = null;
+
+  tutorialActive = false;
+  postTutorialTimerActive = false;
+  level2CardActive = false;
+  level3CardActive = false;
+
+  // Keep the player's stars, fastest times, and unlocked levels.
+  // Do not call resetGame() here.
+  gameState = "level_picker";
+  musicGateOpen = true;
+
+  cursor(ARROW);
 }
 
 function drawFish() {
@@ -1273,6 +1589,15 @@ function updateScreenSounds() {
 // itself is paused during the first few tutorial cards (tutorialIndex
 // 0-3 — see the pause logic in drawTimer()).
 function updateTimerSound() {
+
+  if (isGamePaused) {
+  if (timerSound && timerSound.isPlaying()) {
+    timerSound.stop();
+  }
+
+  return;
+  }
+
   if (!timerSound || !timerSound.isLoaded()) return;
   if (!audioUnlocked || getAudioContext().state !== "running") return;
 
@@ -1433,11 +1758,13 @@ function draw() {
   return;
 }
 
-  if (!timerStarted) {
-    timerStarted = true;
-    startTime = millis();
-  }
+if (!timerStarted) {
+  timerStarted = true;
+  startTime = millis();
+}
 
+// Only update gameplay when the pause menu is closed.
+if (!isGamePaused) {
   handleInput();
   updateWalkSound();
   animateSprite();
@@ -1446,18 +1773,24 @@ function draw() {
   checkFishCollision();
   checkHoleCollision();
   updateTutorialComeFindMeSound();
+} else {
+  player.isMoving = false;
+}
 
   // ---------------- GOAT INIT (only for Level 3) ----------------
-  if (currentLevel === 3 && !goatInitialized) {
-    goatInitialized = true;
-    goatStartTime = millis();
-    goatDirection = random(["left", "right"]);
-  }
+  if (
+  !isGamePaused &&
+  currentLevel === 3 &&
+  !goatInitialized
+) {
+  goatInitialized = true;
+  goatStartTime = millis();
+  goatDirection = random(["left", "right"]);
+}
 
   // While the penguin is falling/shaking/climbing in a hole, skip the
   // top-exit fish gate and the win check — those only apply to normal play.
-  if (holeState === "none") {
-    // --- BLOCK TOP EXIT IF FISH NOT COLLECTED ---
+if (!isGamePaused && holeState === "none") {    // --- BLOCK TOP EXIT IF FISH NOT COLLECTED ---
     if (!fish.collected && player.y < finishY) {
       player.y = finishY;
       // trigger popup message
@@ -1503,8 +1836,10 @@ function draw() {
   }
 
   // WAVE DELAY + WAVE UPDATE
+if (!isGamePaused) {
   if (waveDelayActive) {
     waveDelay--;
+
     if (waveDelay <= 0) {
       waveDelayActive = false;
       startWaveForFrame(4);
@@ -1514,6 +1849,7 @@ function draw() {
   if (waveActive) {
     updateWave();
   }
+}
 
   // DRAW WORLD
   push();
@@ -1541,24 +1877,32 @@ function draw() {
 
   // ---------------- GOAT UPDATE ----------------
   if (currentLevel === 3) {
+  if (!isGamePaused) {
     updateLevel3Goat();
-    drawGoatHitbox();
+  }
+
+  drawGoatHitbox();
   }
 
   // ---------------- HOLE FALL / SHAKE / CLIMB SEQUENCE ----------------
   if (holeState === "falling") {
+  if (!isGamePaused) {
     updateHoleFall();
-    drawHoleFallAnimation();
-  } else if (holeState === "shaking") {
-    updateHoleShake();
-    // penguin stays hidden inside the hole during the shake
-  } else if (holeState === "climbing") {
-    drawHoleClimbAnimation();
-  } else {
-    // DRAW CHARACTER (normal play)
-    drawCharacterOnScreen();
-    drawPenguinHitbox();
   }
+
+  drawHoleFallAnimation();
+} else if (holeState === "shaking") {
+  if (!isGamePaused) {
+    updateHoleShake();
+  }
+
+  // Penguin stays hidden during the shake.
+} else if (holeState === "climbing") {
+  drawHoleClimbAnimation();
+} else {
+  drawCharacterOnScreen();
+  drawPenguinHitbox();
+}
 
   // Capture world frame for X-ray ring — only needed while the wave/X-ray
   // ring is actually active. get() does a full-canvas pixel readback, so
@@ -1616,6 +1960,9 @@ function draw() {
 
   // draw fish ui
   drawFishIconUI();
+
+  // Settings button stays fixed to the screen.
+  drawSettingsButton();
 
   // fish compass during stomping
   if (waveActive) {
@@ -1689,6 +2036,11 @@ function draw() {
     // Draw this LAST so it stays above the gameplay.
   if (debugMode) {
     drawDebugPanel();
+  }
+
+  // Draw this after all gameplay so it appears above everything.
+  if (isGamePaused) {
+  drawPauseMenu();
   }
 }
 
@@ -1771,6 +2123,24 @@ function keyPressed() {
       return;
     }
   }
+
+  // ESC opens and closes the pause menu during gameplay.
+if (gameState === "playing" && keyCode === ESCAPE) {
+  playButtonClickSound();
+
+  if (isGamePaused) {
+    closePauseMenu();
+  } else {
+    openPauseMenu();
+  }
+
+  return false;
+}
+
+// Block all other keyboard gameplay input while paused.
+if (gameState === "playing" && isGamePaused) {
+  return false;
+}
 
   // STORY SCREEN → ENTER → next panel / leave
   if (gameState === "story" && keyCode === ENTER) {
@@ -1974,24 +2344,35 @@ function drawTimer() {
   // "elapsed" from advancing while paused, without needing a separate
   // paused-duration accumulator.
   if (
-    timerStarted &&
-    ((tutorialActive && tutorialIndex < 3) ||
-      level2CardActive ||
-      level3CardActive)
-  ) {
-    startTime += deltaTime;
-  }
+  timerStarted &&
+  !isGamePaused &&
+  (
+    (tutorialActive && tutorialIndex < 3) ||
+    level2CardActive ||
+    level3CardActive
+  )
+) {
+  startTime += deltaTime;
+}
 
   let elapsed = 0;
-  if (timerStarted) {
-    elapsed = floor((millis() - startTime) / 1000);
-  }
+
+if (timerStarted) {
+  // While paused, calculate the timer using the exact moment
+  // the pause menu was opened.
+  const timerNow = isGamePaused ? pauseStartedAt : millis();
+
+  elapsed = floor((timerNow - startTime) / 1000);
+}
   let timeLeft = totalTime - elapsed;
 
   if (timeLeft <= 0) {
-    timeLeft = 0;
+  timeLeft = 0;
+
+  if (!isGamePaused) {
     gameEnded = true;
   }
+}
 
   let minutes = floor(timeLeft / 60);
   let seconds = timeLeft % 60;
@@ -2016,9 +2397,10 @@ function drawTimer() {
   rect(floor(x - w / 2 + 4), floor(y - h / 2 + 4), w - 8, 10, 4);
 
   // FLASH LOGIC
-  if (flashTimer > 0) {
+if (flashTimer > 0) {
+  if (!isGamePaused) {
     flashTimer--;
-
+  }
     // alternate red/white every 10 frames
     if (floor(flashTimer / 10) % 2 === 0) {
       fill(255, 0, 0); // red
@@ -2771,6 +3153,38 @@ function drawDebugPanel() {
 }
 
 function mousePressed() {
+  // Pause menu gets first priority.
+  if (gameState === "playing" && isGamePaused) {
+    if (pointInsidePauseButton(PAUSE_RESUME_BTN)) {
+      resumeBtnPressed = true;
+      return;
+    }
+
+    if (pointInsidePauseButton(PAUSE_RESTART_BTN)) {
+      restartBtnPressed = true;
+      return;
+    }
+
+    if (pointInsidePauseButton(PAUSE_HOME_BTN)) {
+      homeBtnPressed = true;
+      return;
+    }
+
+    // Block clicks from reaching the game underneath the overlay.
+    return;
+  }
+
+  // Open the pause menu from the settings button.
+  if (
+    gameState === "playing" &&
+    !isGamePaused &&
+    isSettingsButtonHovered()
+  ) {
+    playButtonClickSound();
+    openPauseMenu();
+    return;
+  }
+
   if (gameState === "story") {
     handleStoryClick();
     return;
@@ -2869,6 +3283,43 @@ function mousePressed() {
 }
 
 function mouseReleased() {
+
+  // Pause-menu button releases.
+if (gameState === "playing" && isGamePaused) {
+  if (
+    resumeBtnPressed &&
+    pointInsidePauseButton(PAUSE_RESUME_BTN)
+  ) {
+    playButtonClickSound();
+    closePauseMenu();
+    return;
+  }
+
+  if (
+    restartBtnPressed &&
+    pointInsidePauseButton(PAUSE_RESTART_BTN)
+  ) {
+    playButtonClickSound();
+    restartCurrentLevel();
+    return;
+  }
+
+  if (
+    homeBtnPressed &&
+    pointInsidePauseButton(PAUSE_HOME_BTN)
+  ) {
+    playButtonClickSound();
+    returnToHomeFromPause();
+    return;
+  }
+
+  resumeBtnPressed = false;
+  restartBtnPressed = false;
+  homeBtnPressed = false;
+
+  return;
+}
+
   // --- TUTORIAL MOUSE INPUT (tutorial_cards.js) ---
   if (handleTutorialMouseReleased()) return;
 

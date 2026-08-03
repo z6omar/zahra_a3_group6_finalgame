@@ -48,11 +48,28 @@ function playCardSwitchSound() {
 
 function resetTutorial() {
   tutorialActive = false;
-  postTutorialTimerActive = false;
+
+  // Show the initial "Press Enter or click" instruction again.
+  enterInstructionActive = true;
+
+  tutorialAlpha = 0;
   tutorialIndex = 0;
   tutorialDelay = 0;
+
+  postTutorialTimerActive = false;
   postTutorialTimer = 0;
+
+  tutorialBtnPressed = false;
   warningSoundPlayed = false;
+
+  // Reset the warning animation too.
+  avalancheFrame = 0;
+  avalancheFrameTimer = 0;
+
+  // Stop an old warning sound before restarting the tutorial.
+  if (warningSound && warningSound.isPlaying()) {
+    warningSound.stop();
+  }
 }
 
 // Delayed "space" card that pops up after the tutorial ends

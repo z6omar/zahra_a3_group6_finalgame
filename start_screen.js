@@ -11,4 +11,3 @@ function drawStartScreen() {
   animateUpTest();
   drawUpAnimation(420, 470);
 }
-

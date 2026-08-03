@@ -71,11 +71,15 @@ function handleLevel2CardMousePressed() {
 
   level2CardStep++;
 
-  if (level2CardStep >= 2) {
-    level2CardActive = false;
-    gameState = "playing";
-    cursor(ARROW);
-  } else {
+if (level2CardStep >= 2) {
+  level2CardActive = false;
+
+  startTime = millis();
+  timerStarted = true;
+
+  gameState = "playing";
+  cursor(ARROW);
+} else {
     playCardSwitchSound();
   }
 
