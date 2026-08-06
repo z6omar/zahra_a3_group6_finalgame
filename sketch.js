@@ -21,6 +21,9 @@ let fishCollect;
 let goatSound;
 let timerSound;
 let buttonClickSound;
+let button1Sound;     // Used by level circles and How to Play X button
+let button2Sound;     // Used by How to Play, Try Again, and loss Level Picker
+let lockButtonSound;
 let fishCallFar = []; // "searching" clips — [0] = "come find me", [1] = "I'm here"
 let fishCallNear; // plays when penguin is close
 let winSound;
@@ -50,7 +53,6 @@ let resumeBtnPressed = false;
 let restartBtnPressed = false;
 let homeBtnPressed = false;
 
-
 // Background stuff
 const VIEW_W = 1200;
 const VIEW_H = 780;
@@ -60,7 +62,7 @@ const SETTINGS_BTN = {
   x: VIEW_W - 130,
   y: 20,
   w: 130,
-  h: 90
+  h: 90,
 };
 
 // Pause menu buttons
@@ -68,21 +70,21 @@ const PAUSE_RESUME_BTN = {
   x: VIEW_W / 2,
   y: 360,
   w: 340,
-  h: 70
+  h: 70,
 };
 
 const PAUSE_RESTART_BTN = {
   x: VIEW_W / 2,
   y: 455,
   w: 340,
-  h: 70
+  h: 70,
 };
 
 const PAUSE_HOME_BTN = {
   x: VIEW_W / 2,
   y: 550,
   w: 340,
-  h: 70
+  h: 70,
 };
 
 let WORLD_W;
@@ -202,7 +204,7 @@ const SPRITES = {
     scale: 0.4,
     offsetX: 0,
     offsetY: 0,
-    flashlightLength: 190,
+    flashlightLength: 160,
 
     cropLeft: [130, 85, 25, 0, 0, 0],
     cropRight: [0, 0, 0, 25, 65, 85],
@@ -348,6 +350,20 @@ const SPRITES = {
     cropTop: [0, 0, 0, 0, 0, 0],
     cropBottom: [0, 0, 0, 0, 0, 0],
   },
+
+  lockBreak: {
+    img: null,
+    frameWidth: 372,
+    frameHeight: 600,
+    numFrames: 6,
+    scale: 0.6,
+    currentFrame: 0,
+
+    cropLeft: [20, 0, 0, 0, 0, 0],
+    cropRight: [0, 0, 20, 40, 40, 60],
+    cropTop: [0, 0, 15, 0, 0, 0],
+    cropBottom: [0, 0, 0, 0, 0, 0],
+  },
 };
 
 let player = {
@@ -385,6 +401,28 @@ let fastestTimesIsNew = {
   level3: false,
 };
 
+let deathCause = "time"; // "goat" | "hole" | "time"
+let goatDeathVideo, creviceDeathVideo, timeDeathVideo;
+let lossVideoStarted = false;
+let lossVideoFinished = false;
+
+// Central place to trigger a loss with a cause attached
+function triggerLoss(cause) {
+  if (gameEnded) return;
+
+  deathCause = cause;
+  gameEnded = true;
+
+  // Stop every part of the stomp immediately before the loss video.
+  cancelStompAudio();
+
+  player.isMoving = false;
+
+  if (walkSound && walkSound.isPlaying()) {
+    walkSound.stop();
+  }
+}
+
 // World-space Y where the penguin should spawn. This matches the
 // bottom movement clamp in handleInput (WORLD_H_SCALED - player.h / 2),
 // computed from the idle "up" sprite (frame 0), which is what player.h
@@ -402,7 +440,41 @@ function playerSpawnY() {
 // across the game (level picker, win/loss screens, restart, etc.).
 function playButtonClickSound() {
   if (buttonClickSound && buttonClickSound.isLoaded()) {
+    buttonClickSound.setVolume(0.5);
     buttonClickSound.play();
+  }
+}
+
+function playButton1Sound() {
+  if (button1Sound && button1Sound.isLoaded()) {
+    if (button1Sound.isPlaying()) {
+      button1Sound.stop();
+    }
+
+    button1Sound.setVolume(0.5);
+    button1Sound.play();
+  }
+}
+
+function playButton2Sound() {
+  if (button2Sound && button2Sound.isLoaded()) {
+    if (button2Sound.isPlaying()) {
+      button2Sound.stop();
+    }
+
+    button2Sound.setVolume(0.5);
+    button2Sound.play();
+  }
+}
+
+function playLockButtonSound() {
+  if (lockButtonSound && lockButtonSound.isLoaded()) {
+    if (lockButtonSound.isPlaying()) {
+      lockButtonSound.stop();
+    }
+
+    lockButtonSound.setVolume(0.5);
+    lockButtonSound.play();
   }
 }
 
@@ -487,7 +559,6 @@ function loadLevel(levelNum) {
   }
 }
 
-
 // ============================================================
 // DEBUG: STOP SOUNDS BEFORE CHANGING SCREENS
 // ============================================================
@@ -517,14 +588,30 @@ function stopDebugSounds() {
       clip.stop();
     }
   }
+
+  if (gameMusic && gameMusic.isPlaying()) {
+    gameMusic.stop();
+  }
+
+  if (goatSound && goatSound.isPlaying()) {
+    goatSound.stop();
+  }
 }
 
+function stopLossVideos() {
+  for (const v of [goatDeathVideo, creviceDeathVideo, timeDeathVideo]) {
+    if (v && !v.elt.paused) v.stop();
+  }
+  lossVideoStarted = false;
+  lossVideoFinished = false;
+}
 
 // ============================================================
 // DEBUG: JUMP DIRECTLY TO A LEVEL
 // ============================================================
 function debugGoToLevel(levelNum) {
   stopDebugSounds();
+  stopLossVideos();
 
   // Close the pause menu.
   isGamePaused = false;
@@ -608,7 +695,7 @@ let holeOffsetY = -50;
 let flashlight = {
   baseWidth: 200, // width of flashlight near penguin
   endWidth: 330, // max width
-  length: 220,
+  length: 190,
   opacity: 180, // white glow strength
   glowOpacity: 255, // outer white ring
 };
@@ -633,6 +720,42 @@ let ringOffsetY = -50;
 let stompOffsetX = -5;
 let stompOffsetY = 0;
 let blockFishSounds = false;
+let allowStompEndCallback = false;
+
+function cancelStompAudio() {
+  // Disable the callback BEFORE stopping stompSound.
+  // This prevents stompSound.stop() from triggering the fish response.
+  allowStompEndCallback = false;
+  blockFishSounds = false;
+
+  // Cancel the stomp animation.
+  stompAnimating = false;
+  stompFrame = 0;
+  stompFrameTimer = 0;
+
+  // Cancel any pending or active shockwave.
+  waveActive = false;
+  waveRadius = 0;
+  waveDelay = 0;
+  waveDelayActive = false;
+
+  // Stop the main stomping sound.
+  if (stompSound && stompSound.isPlaying()) {
+    stompSound.stop();
+  }
+
+  // Stop the shockwave/aura sound.
+  if (stompAura && stompAura.isPlaying()) {
+    stompAura.stop();
+  }
+
+  // Stop the fish response that normally plays after stomping.
+  const stompFishCall = fishCallFar[1];
+
+  if (stompFishCall && stompFishCall.isPlaying()) {
+    stompFishCall.stop();
+  }
+}
 
 // ROCKY SPIKES — generic hitbox/image config. Per-level spike
 // PLACEMENT (the x/y/variant list) lives in level_1.js etc, and
@@ -706,7 +829,9 @@ function preload() {
   SPRITES.aw.img = loadImage("assets/images/aw_key_penguin.png");
   SPRITES.sd.img = loadImage("assets/images/sd_key_penguin.png");
   SPRITES.as.img = loadImage("assets/images/as_key_penguin.png");
+  SPRITES.lockBreak.img = loadImage("assets/images/lock_break.png");
   preloadStoryAssets();
+  preloadWinStoryAssets();
   startBg = loadImage("assets/images/title_screen.png");
   winBg = loadImage("assets/images/win_screen.png");
   lossBg = loadImage("assets/images/loss_screen.png");
@@ -721,6 +846,9 @@ function preload() {
   goatSound = loadSound("assets/sounds/goat_sound.mp3");
   timerSound = loadSound("assets/sounds/timer_sound.mp3");
   buttonClickSound = loadSound("assets/sounds/button_click_sound.mp3");
+  button1Sound = loadSound("assets/sounds/button_1.mp3");
+  button2Sound = loadSound("assets/sounds/button_2.mp3");
+  lockButtonSound = loadSound("assets/sounds/lock_button.mp3");
   fishCallFar[0] = loadSound("assets/sounds/shelby_comefindme.mp3");
   fishCallFar[1] = loadSound("assets/sounds/shelby_imhere.mp3");
   fishCallNear = loadSound("assets/sounds/shelby_imnearyou.mp3");
@@ -781,6 +909,16 @@ function setup() {
   blizzardBuffer = createGraphics(VIEW_W, VIEW_H);
   loadLevel(1);
   unlockAudio();
+
+  goatDeathVideo = createVideo(["assets/videos/goat_death.mp4"]);
+  goatDeathVideo.hide();
+  goatDeathVideo.volume(0); // set >0 if you want the clip's own audio
+  creviceDeathVideo = createVideo(["assets/videos/crevice_death.mp4"]);
+  creviceDeathVideo.hide();
+  creviceDeathVideo.volume(0);
+  timeDeathVideo = createVideo(["assets/videos/time_death.mp4"]);
+  timeDeathVideo.hide();
+  timeDeathVideo.volume(0);
 
   // Catch the very first interaction of any kind, anywhere on the page
   for (const evt of ["pointerdown", "keydown", "touchstart"]) {
@@ -990,19 +1128,11 @@ function drawSettingsButton() {
   const drawW = SETTINGS_BTN.w * hoverScale;
   const drawH = SETTINGS_BTN.h * hoverScale;
 
-  const drawX =
-    SETTINGS_BTN.x - (drawW - SETTINGS_BTN.w) / 2;
+  const drawX = SETTINGS_BTN.x - (drawW - SETTINGS_BTN.w) / 2;
 
-  const drawY =
-    SETTINGS_BTN.y - (drawH - SETTINGS_BTN.h) / 2;
+  const drawY = SETTINGS_BTN.y - (drawH - SETTINGS_BTN.h) / 2;
 
-  image(
-    settingsButtonImg,
-    drawX,
-    drawY,
-    drawW,
-    drawH
-  );
+  image(settingsButtonImg, drawX, drawY, drawW, drawH);
 
   pop();
 }
@@ -1105,7 +1235,7 @@ function drawPauseMenu() {
     PAUSE_RESUME_BTN.y,
     PAUSE_RESUME_BTN.w,
     PAUSE_RESUME_BTN.h,
-    resumeBtnPressed
+    resumeBtnPressed,
   );
 
   const restartHovered = drawButton(
@@ -1114,7 +1244,7 @@ function drawPauseMenu() {
     PAUSE_RESTART_BTN.y,
     PAUSE_RESTART_BTN.w,
     PAUSE_RESTART_BTN.h,
-    restartBtnPressed
+    restartBtnPressed,
   );
 
   const homeHovered = drawButton(
@@ -1123,7 +1253,7 @@ function drawPauseMenu() {
     PAUSE_HOME_BTN.y,
     PAUSE_HOME_BTN.w,
     PAUSE_HOME_BTN.h,
-    homeBtnPressed
+    homeBtnPressed,
   );
 
   if (resumeHovered || restartHovered || homeHovered) {
@@ -1138,6 +1268,7 @@ function restartCurrentLevel() {
   // timer is about to restart completely.
   isGamePaused = false;
   pauseStartedAt = 0;
+  stopLossVideos();
 
   resumeBtnPressed = false;
   restartBtnPressed = false;
@@ -1179,6 +1310,7 @@ function returnToHomeFromPause() {
 
   // Stop temporary gameplay sounds.
   stopDebugSounds();
+  stopLossVideos();
 
   timerStarted = false;
   gameEnded = false;
@@ -1494,7 +1626,7 @@ function unlockAudio() {
 // fishCallNear   "I'm near you"  → loops every 10s while the penguin is
 //                                  within FISH_NEAR_DIST of the fish,
 //                                  stops the instant the fish is collected
-const FISH_CALL_MAX_VOL = 0.8;
+const FISH_CALL_MAX_VOL = 0.95;
 const FISH_NEAR_DIST = 250; // within this distance → "I'm near you"
 const FISH_NEAR_LOOP_INTERVAL = 10000; // ms between "I'm near you" loops
 const STOMP_FISHCALL_FADE_SEC = 1; // how long the post-stomp ping fades out
@@ -1518,15 +1650,42 @@ function updateTutorialComeFindMeSound() {
 
 // Fired once the stomp sound finishes playing (see handleInput()).
 function playStompFishCall() {
-  if (!blockFishSounds) return; // stomp already ended, don't fire late
-  const clip = fishCallFar[1]; // "shelby_imhere.mp3"
-  if (!clip || !clip.isLoaded()) return;
+  // Never play this sound after a loss or after the stomp was cancelled.
+  if (
+    !allowStompEndCallback ||
+    !blockFishSounds ||
+    fish.collected ||
+    gameEnded ||
+    gameState === "loss"
+  ) {
+    allowStompEndCallback = false;
+    return;
+  }
+
+  // This callback is only allowed to run once.
+  allowStompEndCallback = false;
+
+  const clip = fishCallFar[1];
+
+  if (!clip || !clip.isLoaded()) {
+    return;
+  }
 
   clip.setVolume(FISH_CALL_MAX_VOL);
   clip.play();
 
   const fadeDelayMs = max(0, clip.duration() - STOMP_FISHCALL_FADE_SEC) * 1000;
+
   setTimeout(() => {
+    // Do nothing if the player has lost since this timeout started.
+    if (gameEnded || gameState === "loss") {
+      if (clip.isPlaying()) {
+        clip.stop();
+      }
+
+      return;
+    }
+
     if (clip.isPlaying()) {
       clip.setVolume(0, STOMP_FISHCALL_FADE_SEC);
     }
@@ -1551,6 +1710,8 @@ function updateFishCall() {
 
   const playing =
     gameState !== "start" &&
+    gameState !== "story" &&
+    gameState !== "win_story" &&
     gameState !== "win" &&
     gameState !== "loss" &&
     gameState !== "transition" &&
@@ -1575,13 +1736,37 @@ function updateScreenSounds() {
 
   if (gameState === "win" && lastScreenSound !== "win") {
     lastScreenSound = "win";
-    if (stompSound && stompSound.isPlaying()) stompSound.stop();
-    if (walkSound && walkSound.isPlaying()) walkSound.stop();
-    if (winSound && winSound.isLoaded()) winSound.play();
+
+    cancelStompAudio();
+
+    if (walkSound && walkSound.isPlaying()) {
+      walkSound.stop();
+    }
+
+    if (goatSound && goatSound.isPlaying()) {
+      goatSound.stop();
+    }
+
+    if (winSound && winSound.isLoaded()) {
+      winSound.play();
+    }
   } else if (gameState === "loss" && lastScreenSound !== "loss") {
     lastScreenSound = "loss";
-    if (stompSound && stompSound.isPlaying()) stompSound.stop();
-    if (loseSound && loseSound.isLoaded()) loseSound.play();
+
+    // Final cleanup when the loss screen begins.
+    cancelStompAudio();
+
+    if (walkSound && walkSound.isPlaying()) {
+      walkSound.stop();
+    }
+
+    if (goatSound && goatSound.isPlaying()) {
+      goatSound.stop();
+    }
+
+    if (loseSound && loseSound.isLoaded()) {
+      loseSound.play();
+    }
   } else if (gameState !== "win" && gameState !== "loss") {
     lastScreenSound = "";
   }
@@ -1595,13 +1780,12 @@ function updateScreenSounds() {
 // itself is paused during the first few tutorial cards (tutorialIndex
 // 0-3 — see the pause logic in drawTimer()).
 function updateTimerSound() {
-
   if (isGamePaused) {
-  if (timerSound && timerSound.isPlaying()) {
-    timerSound.stop();
-  }
+    if (timerSound && timerSound.isPlaying()) {
+      timerSound.stop();
+    }
 
-  return;
+    return;
   }
 
   if (!timerSound || !timerSound.isLoaded()) return;
@@ -1617,6 +1801,7 @@ function updateTimerSound() {
     !timerPaused &&
     gameState !== "start" &&
     gameState !== "story" &&
+    gameState !== "win_story" &&
     gameState !== "win" &&
     gameState !== "loss" &&
     gameState !== "transition" &&
@@ -1640,6 +1825,8 @@ function updateMusic() {
   const wantLevelPicker = gameState === "level_picker";
   const wantGame = ![
     "start",
+    "story",
+    "win_story",
     "win",
     "loss",
     "transition",
@@ -1687,6 +1874,17 @@ function draw() {
   // STORY SCREEN
   if (gameState === "story") {
     drawStoryScreen();
+
+    if (debugMode) {
+      drawDebugPanel();
+    }
+
+    return;
+  }
+
+  // ENDING STORY SCREEN (after Level 3)
+  if (gameState === "win_story") {
+    drawWinStoryScreen();
 
     if (debugMode) {
       drawDebugPanel();
@@ -1754,49 +1952,46 @@ function draw() {
   // GAMEPLAY
   // -------------------------
   if (gameEnded) {
-  gameState = "loss";
-  drawLossScreen();
+    gameState = "loss";
+    drawLossScreen();
 
-  if (debugMode) {
-    drawDebugPanel();
+    if (debugMode) {
+      drawDebugPanel();
+    }
+
+    return;
   }
 
-  return;
-}
+  if (!timerStarted) {
+    timerStarted = true;
+    startTime = millis();
+  }
 
-if (!timerStarted) {
-  timerStarted = true;
-  startTime = millis();
-}
-
-// Only update gameplay when the pause menu is closed.
-if (!isGamePaused) {
-  handleInput();
-  updateWalkSound();
-  animateSprite();
-  updateCamera();
-  updateStompAnimation();
-  checkFishCollision();
-  checkHoleCollision();
-  updateTutorialComeFindMeSound();
-} else {
-  player.isMoving = false;
-}
+  // Only update gameplay when the pause menu is closed.
+  if (!isGamePaused) {
+    handleInput();
+    updateWalkSound();
+    animateSprite();
+    updateCamera();
+    updateStompAnimation();
+    checkFishCollision();
+    checkHoleCollision();
+    updateTutorialComeFindMeSound();
+  } else {
+    player.isMoving = false;
+  }
 
   // ---------------- GOAT INIT (only for Level 3) ----------------
-  if (
-  !isGamePaused &&
-  currentLevel === 3 &&
-  !goatInitialized
-) {
-  goatInitialized = true;
-  goatStartTime = millis();
-  goatDirection = random(["left", "right"]);
-}
+  if (!isGamePaused && currentLevel === 3 && !goatInitialized) {
+    goatInitialized = true;
+    goatStartTime = millis();
+    goatDirection = random(["left", "right"]);
+  }
 
   // While the penguin is falling/shaking/climbing in a hole, skip the
   // top-exit fish gate and the win check — those only apply to normal play.
-if (!isGamePaused && holeState === "none") {    // --- BLOCK TOP EXIT IF FISH NOT COLLECTED ---
+  if (!isGamePaused && holeState === "none") {
+    // --- BLOCK TOP EXIT IF FISH NOT COLLECTED ---
     if (!fish.collected && player.y < finishY) {
       player.y = finishY;
       // trigger popup message
@@ -1835,27 +2030,27 @@ if (!isGamePaused && holeState === "none") {    // --- BLOCK TOP EXIT IF FISH NO
 
       tutorialActive = false;
       postTutorialTimerActive = false;
-
+      queueLockBreak(currentLevel);
       gameState = "win";
       return;
     }
   }
 
   // WAVE DELAY + WAVE UPDATE
-if (!isGamePaused) {
-  if (waveDelayActive) {
-    waveDelay--;
+  if (!isGamePaused) {
+    if (waveDelayActive) {
+      waveDelay--;
 
-    if (waveDelay <= 0) {
-      waveDelayActive = false;
-      startWaveForFrame(4);
+      if (waveDelay <= 0) {
+        waveDelayActive = false;
+        startWaveForFrame(4);
+      }
+    }
+
+    if (waveActive) {
+      updateWave();
     }
   }
-
-  if (waveActive) {
-    updateWave();
-  }
-}
 
   // DRAW WORLD
   push();
@@ -1883,32 +2078,32 @@ if (!isGamePaused) {
 
   // ---------------- GOAT UPDATE ----------------
   if (currentLevel === 3) {
-  if (!isGamePaused) {
-    updateLevel3Goat();
-  }
+    if (!isGamePaused) {
+      updateLevel3Goat();
+    }
 
-  drawGoatHitbox();
+    drawGoatHitbox();
   }
 
   // ---------------- HOLE FALL / SHAKE / CLIMB SEQUENCE ----------------
   if (holeState === "falling") {
-  if (!isGamePaused) {
-    updateHoleFall();
-  }
+    if (!isGamePaused) {
+      updateHoleFall();
+    }
 
-  drawHoleFallAnimation();
-} else if (holeState === "shaking") {
-  if (!isGamePaused) {
-    updateHoleShake();
-  }
+    drawHoleFallAnimation();
+  } else if (holeState === "shaking") {
+    if (!isGamePaused) {
+      updateHoleShake();
+    }
 
-  // Penguin stays hidden during the shake.
-} else if (holeState === "climbing") {
-  drawHoleClimbAnimation();
-} else {
-  drawCharacterOnScreen();
-  drawPenguinHitbox();
-}
+    // Penguin stays hidden during the shake.
+  } else if (holeState === "climbing") {
+    drawHoleClimbAnimation();
+  } else {
+    drawCharacterOnScreen();
+    drawPenguinHitbox();
+  }
 
   // Capture world frame for X-ray ring — only needed while the wave/X-ray
   // ring is actually active. get() does a full-canvas pixel readback, so
@@ -2039,19 +2234,18 @@ if (!isGamePaused) {
     }
   }
 
-    // Draw this LAST so it stays above the gameplay.
+  // Draw this LAST so it stays above the gameplay.
   if (debugMode) {
     drawDebugPanel();
   }
 
   // Draw this after all gameplay so it appears above everything.
   if (isGamePaused) {
-  drawPauseMenu();
+    drawPauseMenu();
   }
 }
 
 function keyPressed() {
-
   // ==========================================================
   // DEBUG PANEL AND DEBUG SHORTCUTS
   // ==========================================================
@@ -2119,10 +2313,11 @@ function keyPressed() {
     }
 
     // L = lose screen
+    // L = lose screen (time death)
     if (key === "l" || key === "L") {
       stopDebugSounds();
-
-      gameEnded = true;
+      stopLossVideos();
+      triggerLoss("time");
       timerStarted = false;
       gameState = "loss";
       cursor(ARROW);
@@ -2131,26 +2326,32 @@ function keyPressed() {
   }
 
   // ESC opens and closes the pause menu during gameplay.
-if (gameState === "playing" && keyCode === ESCAPE) {
-  playButtonClickSound();
+  if (gameState === "playing" && keyCode === ESCAPE) {
+    playButton1Sound();
 
-  if (isGamePaused) {
-    closePauseMenu();
-  } else {
-    openPauseMenu();
+    if (isGamePaused) {
+      closePauseMenu();
+    } else {
+      openPauseMenu();
+    }
+
+    return false;
   }
 
-  return false;
-}
-
-// Block all other keyboard gameplay input while paused.
-if (gameState === "playing" && isGamePaused) {
-  return false;
-}
+  // Block all other keyboard gameplay input while paused.
+  if (gameState === "playing" && isGamePaused) {
+    return false;
+  }
 
   // STORY SCREEN → ENTER → next panel / leave
   if (gameState === "story" && keyCode === ENTER) {
     advanceStory();
+    return;
+  }
+
+  // ENDING STORY SCREEN → ENTER → next page / leave
+  if (gameState === "win_story" && keyCode === ENTER) {
+    advanceWinStory();
     return;
   }
 
@@ -2208,16 +2409,21 @@ if (gameState === "playing" && isGamePaused) {
   // TUTORIAL INPUT (tutorial_cards.js)
   if (handleTutorialKeyPressed()) return;
 
-  // WIN SCREEN → ENTER → START
+  // WIN SCREEN → ENTER → ending story (after Level 3) or Level Picker
   if (gameState === "win" && keyCode === ENTER) {
     playButtonClickSound();
-    startLevelPickerTransition(); // was: gameState = "start";
+    if (currentLevel === 3) {
+      beginWinStory();
+    } else {
+      startLevelPickerTransition(); // was: gameState = "start";
+    }
     return;
   }
 
   // LOSS SCREEN → R → RESTART
-  if (gameState === "loss" && key === "r") {
+  if (gameState === "loss" && lossVideoFinished && key === "r") {
     playButtonClickSound();
+    stopLossVideos();
     resetGame();
     gameState = "playing";
     cursor(ARROW);
@@ -2225,7 +2431,7 @@ if (gameState === "playing" && isGamePaused) {
   }
 
   // LOSS SCREEN → ENTER → START
-  if (gameState === "loss" && keyCode === ENTER) {
+  if (gameState === "loss" && lossVideoFinished && keyCode === ENTER) {
     playButtonClickSound();
     resetGame();
     startTime = millis();
@@ -2246,6 +2452,7 @@ function resetGame() {
   startTime = 0;
   timerStarted = false;
   finalTime = null;
+  stopLossVideos();
 
   totalTime = LEVEL_TIMES[currentLevel]; // reset timer
   flashTimer = 0;
@@ -2350,39 +2557,32 @@ function drawTimer() {
   // "elapsed" from advancing while paused, without needing a separate
   // paused-duration accumulator.
   if (
-  timerStarted &&
-  !isGamePaused &&
-  (
-    (tutorialActive && tutorialIndex < 3) ||
-    level2CardActive ||
-    level3CardActive
-  )
-) {
-  startTime += deltaTime;
-}
-
+    timerStarted &&
+    !isGamePaused &&
+    ((tutorialActive && tutorialIndex < 3) ||
+      level2CardActive ||
+      level3CardActive)
+  ) {
+    startTime += deltaTime;
+  }
   let elapsed = 0;
 
-if (timerStarted) {
-  // While paused, calculate the timer using the exact moment
-  // the pause menu was opened.
-  const timerNow = isGamePaused ? pauseStartedAt : millis();
-
-  elapsed = floor((timerNow - startTime) / 1000);
-}
-  let timeLeft = totalTime - elapsed;
-
-  if (timeLeft <= 0) {
-  timeLeft = 0;
-
-  if (!isGamePaused) {
-    gameEnded = true;
+  if (timerStarted) {
+    // While paused, calculate the timer using the exact moment
+    // the pause menu was opened.
+    const timerNow = isGamePaused ? pauseStartedAt : millis();
+    elapsed = floor((timerNow - startTime) / 1000);
   }
-}
+  let timeLeft = totalTime - elapsed;
+  if (timeLeft <= 0) {
+    timeLeft = 0;
+    if (!isGamePaused) {
+      triggerLoss("time"); // was: gameEnded = true;
+    }
+  }
 
   let minutes = floor(timeLeft / 60);
   let seconds = timeLeft % 60;
-
   let timerText = minutes + ":" + nf(seconds, 2);
 
   // body
@@ -2403,10 +2603,10 @@ if (timerStarted) {
   rect(floor(x - w / 2 + 4), floor(y - h / 2 + 4), w - 8, 10, 4);
 
   // FLASH LOGIC
-if (flashTimer > 0) {
-  if (!isGamePaused) {
-    flashTimer--;
-  }
+  if (flashTimer > 0) {
+    if (!isGamePaused) {
+      flashTimer--;
+    }
     // alternate red/white every 10 frames
     if (floor(flashTimer / 10) % 2 === 0) {
       fill(255, 0, 0); // red
@@ -2450,7 +2650,8 @@ function updateWalkSound() {
     gameState === "loss" ||
     gameState === "transition" ||
     gameState === "level_picker" ||
-    gameState === "story";
+    gameState === "story" ||
+    gameState === "win_story";
 
   const walking =
     movementHeld &&
@@ -2473,7 +2674,10 @@ function handleInput() {
   // --- STOMP ---
   if (
     keyIsDown(32) &&
+    !gameEnded &&
+    gameState !== "loss" &&
     !stompAnimating &&
+    holeState === "none" &&
     !tutorialActive &&
     !level2CardActive &&
     !level3CardActive
@@ -2483,33 +2687,46 @@ function handleInput() {
     stompFrameTimer = 0;
     waveDelay = 0;
     waveDelayActive = false;
+
     totalTime = max(0, totalTime - 45);
     flashTimer = 150;
 
     // --- STOMP SOUND ---
     blockFishSounds = true;
 
-    // Stop any fish-search audio already playing so the stomp sound
-    // (and the single fishCallFar[1] ping that follows it) are the only
-    // non-music sounds heard during the stomp.
-    if (fishCallNear && fishCallNear.isPlaying()) fishCallNear.stop();
+    // Stop any fish-search audio already playing.
+    if (fishCallNear && fishCallNear.isPlaying()) {
+      fishCallNear.stop();
+    }
+
     for (const clip of fishCallFar) {
-      if (clip && clip.isPlaying()) clip.stop();
+      if (clip && clip.isPlaying()) {
+        clip.stop();
+      }
     }
 
     if (stompSound && stompSound.isLoaded()) {
+      // Allow the callback only for this specific stomp.
+      allowStompEndCallback = true;
+
+      stompSound.onended(() => {
+        // Stopping the sound during a loss may still call onended().
+        // These checks prevent any post-stomp sound from playing.
+        if (!allowStompEndCallback || gameEnded || gameState === "loss") {
+          allowStompEndCallback = false;
+          return;
+        }
+
+        playStompFishCall();
+      });
+
       stompSound.play();
-      stompSound.onended(playStompFishCall);
     } else {
-      // no stomp sound available — still let the fish ping happen
+      allowStompEndCallback = true;
       playStompFishCall();
     }
   }
-
-  // Penguin is fully frozen while any tutorial card is on screen —
-  // including the last (space dialogue) card. Movement is allowed
-  // only when tutorialActive is false, i.e. normal play and the gap
-  // between the flashlight card and the space card.
+  // Freeze the penguin while tutorial cards are open.
   if (tutorialActive) {
     player.isMoving = false;
     return;
@@ -2525,13 +2742,17 @@ function handleInput() {
     return;
   }
 
-  // Movement AND stomp are disabled the entire time the penguin is
-  // falling / shaking / climbing in a hole.
+  // Disable movement and stomping throughout the entire hole sequence.
+  // This includes:
+  // "falling"
+  // "shaking"
+  // "climbing"
   if (holeState !== "none") {
     player.isMoving = false;
     return;
   }
 
+  // Freeze normal movement while the stomp animation is playing.
   if (stompAnimating) {
     player.isMoving = false;
     return;
@@ -2540,7 +2761,7 @@ function handleInput() {
   let newX = player.x;
   let newY = player.y;
 
-  // reset each frame
+  // Reset movement every frame.
   player.isMoving = false;
 
   const W = keyIsDown(87) || keyIsDown(UP_ARROW);
@@ -2548,74 +2769,89 @@ function handleInput() {
   const S = keyIsDown(83) || keyIsDown(DOWN_ARROW);
   const D = keyIsDown(68) || keyIsDown(RIGHT_ARROW);
 
-  // --- FIRST GOAT TUTORIAL TRIGGER (LEVEL 3) ---
+  // --- FIRST GOAT TUTORIAL TRIGGER — LEVEL 3 ---
   if (currentLevel === 3 && W && !goatHasKilledOnce && !goatTriggered) {
     goatTriggered = true;
     goatTriggerTime = millis();
   }
 
-  // --- DIAGONALS FIRST ---
+  // --- DIAGONAL MOVEMENT ---
   if (W && D) {
     newX += player.speed;
     newY -= player.speed;
+
     player.direction = "wd";
     player.isMoving = true;
   } else if (A && W) {
     newX -= player.speed;
     newY -= player.speed;
+
     player.direction = "aw";
     player.isMoving = true;
   } else if (S && D) {
     newX += player.speed;
     newY += player.speed;
+
     player.direction = "sd";
     player.isMoving = true;
   } else if (A && S) {
     newX -= player.speed;
     newY += player.speed;
+
     player.direction = "as";
     player.isMoving = true;
   }
 
-  // --- CARDINAL DIRECTIONS ---
+  // --- CARDINAL MOVEMENT ---
   else if (W) {
     newY -= player.speed;
+
     player.direction = "up";
     player.isMoving = true;
   } else if (S) {
     newY += player.speed;
+
     player.direction = "down";
     player.isMoving = true;
   } else if (A) {
     newX -= player.speed;
+
     player.direction = "left";
     player.isMoving = true;
   } else if (D) {
     newX += player.speed;
+
     player.direction = "right";
     player.isMoving = true;
   }
 
+  // Keep the penguin inside the world.
   if (WORLD_W_SCALED && WORLD_H_SCALED) {
     newX = constrain(newX, player.w / 2, WORLD_W_SCALED - player.w / 2);
+
     newY = min(newY, WORLD_H_SCALED - player.h / 2);
   }
 
-  // collision radius
+  // Collision radius.
   let r = player.w * 0.45;
 
-  // three collision test points (world space)
+  // Three collision test points in world space.
   let topX = newX;
   let topY = newY - r;
+
   let leftX = newX - r;
   let leftY = newY;
+
   let rightX = newX + r;
   let rightY = newY;
 
+  // Check collisions with diagonal walls.
   for (let w of walls) {
     function crossed(px, py) {
       let d0 = pointSide(player.x, player.y, w.x1, w.y1, w.x2, w.y2);
+
       let d1 = pointSide(px, py, w.x1, w.y1, w.x2, w.y2);
+
       return d0 * d1 < 0;
     }
 
@@ -2627,23 +2863,25 @@ function handleInput() {
       let mx = newX - player.x;
       let my = newY - player.y;
 
-      // compute wall normal
+      // Compute the wall normal.
       let nx = w.y2 - w.y1;
       let ny = -(w.x2 - w.x1);
 
-      // normalize
+      // Normalize it.
       let len = Math.hypot(nx, ny);
+
       nx /= len;
       ny /= len;
 
-      // ⭐ ensure normal faces the player
+      // Make sure the normal faces the player.
       let side = pointSide(player.x, player.y, w.x1, w.y1, w.x2, w.y2);
+
       if (side < 0) {
         nx = -nx;
         ny = -ny;
       }
 
-      // dot > 0 means movement is toward the wall
+      // dot > 0 means the player is moving toward the wall.
       let dot = mx * nx + my * ny;
 
       if (dot > 0) {
@@ -2658,10 +2896,14 @@ function handleInput() {
     }
   }
 
+  // Move horizontally one pixel at a time so the penguin
+  // does not move through walls or spikes.
   let dx = newX - player.x;
   let stepX = dx === 0 ? 0 : dx > 0 ? 1 : -1;
+
   for (let i = 0; i < Math.abs(dx); i++) {
     let testX = player.x + stepX;
+
     if (
       !wouldCollideWithSpike(testX, player.y) &&
       isLegalPosition(testX, player.y)
@@ -2671,10 +2913,14 @@ function handleInput() {
       break;
     }
   }
+
+  // Move vertically one pixel at a time.
   let dy = newY - player.y;
   let stepY = dy === 0 ? 0 : dy > 0 ? 1 : -1;
+
   for (let i = 0; i < Math.abs(dy); i++) {
     let testY = player.y + stepY;
+
     if (
       !wouldCollideWithSpike(player.x, testY) &&
       isLegalPosition(player.x, testY)
@@ -2729,7 +2975,7 @@ function checkFishCollision() {
 
     // --- COLLECT SOUND ---
     if (fishCollect && fishCollect.isLoaded()) {
-      fishCollect.setVolume(0.7);
+      fishCollect.setVolume(0.9);
       fishCollect.play();
     }
 
@@ -2803,19 +3049,60 @@ function enterHole(h) {
   holeState = "falling";
   activeHole = h;
 
-  // Snap the penguin to the hole so the camera settles right over it
+  // Cancel any stomp that began on the same frame
+  // that the penguin touched the hole.
+  stompAnimating = false;
+  stompFrame = 0;
+  stompFrameTimer = 0;
+
+  // Cancel the stomp shockwave.
+  waveActive = false;
+  waveRadius = 200;
+  waveDelay = 0;
+  waveDelayActive = false;
+
+  // Allow fish sounds to work normally again after the cancelled stomp.
+  blockFishSounds = false;
+
+  // Stop stomp sounds immediately.
+  if (stompSound && stompSound.isPlaying()) {
+    stompSound.stop();
+  }
+
+  if (stompAura && stompAura.isPlaying()) {
+    stompAura.stop();
+  }
+
+  // Lock the penguin to the middle of the active hole.
   player.x = h.x;
   player.y = h.y;
   player.isMoving = false;
 
+  // Reset the falling animation.
   holeFallFrame = 0;
   holeFallFrameTimer = 0;
 
-  // Time penalty + red/white flash on the timer
-  totalTime = max(0, totalTime - HOLE_TIME_PENALTY);
-  flashTimer = HOLE_TIMER_FLASH_FRAMES;
-}
+  // Calculate the time currently displayed by the timer.
+  let elapsed = 0;
 
+  if (timerStarted) {
+    elapsed = floor((millis() - startTime) / 1000);
+  }
+
+  const currentTimeLeft = totalTime - elapsed;
+
+  const wouldGoNegative = currentTimeLeft - HOLE_TIME_PENALTY <= 0;
+
+  // Apply the hole penalty.
+  totalTime = max(0, totalTime - HOLE_TIME_PENALTY);
+
+  flashTimer = HOLE_TIMER_FLASH_FRAMES;
+
+  // Falling into the hole causes a loss if no time remains.
+  if (wouldGoNegative) {
+    triggerLoss("hole");
+  }
+}
 // Advances the fall animation; once the last frame has played, moves on
 // to the screen-shake stage.
 function updateHoleFall() {
@@ -3020,10 +3307,16 @@ function updateWave() {
 }
 
 function startWaveForFrame(frameIndex) {
+  // Do not start the wave or aura after the player loses.
+  if (gameEnded || gameState === "loss") {
+    waveActive = false;
+    waveDelayActive = false;
+    return;
+  }
+
   waveActive = true;
   waveRadius = 0;
 
-  // --- AURA SOUND (fires when the blue ring activates) ---
   if (stompAura && stompAura.isLoaded()) {
     stompAura.play();
   }
@@ -3033,35 +3326,32 @@ function startWaveForFrame(frameIndex) {
 }
 
 function drawBlizzardOverlay() {
-  // Reused every frame instead of createGraphics()'d from scratch. The old
-  // version allocated a brand-new offscreen canvas every single frame and
-  // never freed it — that's what was causing the game to slow down more
-  // and more the longer you played, especially noticeable after finishing
-  // a level and continuing to play. blizzardBuffer is created once, in
-  // setup().
   blizzardBuffer.clear();
-  // Composite mode persists on the buffer between frames since we're no
-  // longer recreating it — reset to normal drawing mode before the fresh
-  // fill/rect below, or last frame's "destination-out" cutout mode would
-  // carry over and erase instead of draw.
   blizzardBuffer.drawingContext.globalCompositeOperation = "source-over";
 
   // Full white blizzard layer
   blizzardBuffer.noStroke();
-  blizzardBuffer.fill(255, 255, 255, 253); // change opacity back to 253 after debugging
+  blizzardBuffer.fill(255, 255, 255, 253);
   blizzardBuffer.rect(0, 0, width, height);
 
   // Convert penguin world → screen
   const px = (player.x - camX) * camZoom * bgScale + holeOffsetX;
   const py = (player.y - camY) * camZoom * bgScale + holeOffsetY;
 
-  // --- 1. KEEP ORIGINAL CIRCLE CUT-OUT ---
-  blizzardBuffer.drawingContext.globalCompositeOperation = "destination-out";
-  blizzardBuffer.fill(255);
-  blizzardBuffer.ellipse(px, py, clearRadius * 2, clearRadius * 2);
+  const ctx = blizzardBuffer.drawingContext;
+  ctx.globalCompositeOperation = "destination-out";
 
-  // --- 2. ADD FLASHLIGHT CONE CUT-OUT ON TOP ---
-  // Determine angle
+  // Soften the edges of everything we erase below.
+  // Bump the px value up/down to control how soft the fade is.
+  ctx.filter = "blur(40px)";
+
+  // --- 1. CIRCLE CUT-OUT (same shape as before, just blurred) ---
+  ctx.fillStyle = "white";
+  ctx.beginPath();
+  ctx.arc(px, py, clearRadius, 0, TWO_PI);
+  ctx.fill();
+
+  // --- 2. FLASHLIGHT CONE CUT-OUT (same shape as before, just blurred) ---
   let dir = player.direction;
   let angle = 0;
 
@@ -3070,32 +3360,32 @@ function drawBlizzardOverlay() {
   if (dir === "left") angle = HALF_PI;
   if (dir === "down") angle = 2 * PI;
 
-  // Diagonals
   if (dir === "wd") angle = -3 * QUARTER_PI;
   if (dir === "aw") angle = 3 * QUARTER_PI;
   if (dir === "sd") angle = -QUARTER_PI;
   if (dir === "as") angle = QUARTER_PI;
 
-  // Direction-specific offsets
   let sprite = SPRITES[player.direction];
   let offX = sprite.offsetX * camZoom * bgScale;
   let offY = sprite.offsetY * camZoom * bgScale;
-
-  // Direction-specific flashlight length
   let len = (sprite.flashlightLength ?? flashlight.length) * camZoom * bgScale;
 
-  blizzardBuffer.push();
-  blizzardBuffer.translate(px + offX, py + offY);
-  blizzardBuffer.rotate(angle);
+  ctx.save();
+  ctx.translate(px + offX, py + offY);
+  ctx.rotate(angle);
 
-  blizzardBuffer.beginShape();
-  blizzardBuffer.vertex(-flashlight.baseWidth / 2, 0);
-  blizzardBuffer.vertex(flashlight.baseWidth / 2, 0);
-  blizzardBuffer.vertex(flashlight.endWidth / 2, len);
-  blizzardBuffer.vertex(-flashlight.endWidth / 2, len);
-  blizzardBuffer.endShape(CLOSE);
+  ctx.beginPath();
+  ctx.moveTo(-flashlight.baseWidth / 2, 0);
+  ctx.lineTo(flashlight.baseWidth / 2, 0);
+  ctx.lineTo(flashlight.endWidth / 2, len);
+  ctx.lineTo(-flashlight.endWidth / 2, len);
+  ctx.closePath();
+  ctx.fill();
 
-  blizzardBuffer.pop();
+  ctx.restore();
+
+  // Reset filter so it doesn't affect anything drawn after this.
+  ctx.filter = "none";
 
   // Draw final blizzard layer
   image(blizzardBuffer, 0, 0);
@@ -3181,18 +3471,19 @@ function mousePressed() {
   }
 
   // Open the pause menu from the settings button.
-  if (
-    gameState === "playing" &&
-    !isGamePaused &&
-    isSettingsButtonHovered()
-  ) {
-    playButtonClickSound();
-    openPauseMenu();
-    return;
-  }
+  if (gameState === "playing" && !isGamePaused && isSettingsButtonHovered()) {
+  playButton1Sound();
+  openPauseMenu();
+  return;
+}
 
   if (gameState === "story") {
     handleStoryClick();
+    return;
+  }
+
+  if (gameState === "win_story") {
+    handleWinStoryClick();
     return;
   }
 
@@ -3205,7 +3496,7 @@ function mousePressed() {
   }
 
   if (handleTutorialMousePressed()) return;
-  
+
   if (handleLevel2CardMousePressed()) return;
 
   if (handleLevel3CardMousePressed()) return;
@@ -3254,9 +3545,9 @@ function mousePressed() {
   }
 
   // --- LOSS SCREEN BUTTON ---
-  if (gameState === "loss") {
-    let bx = width / 2;
-    let by = height * 0.45;
+  if (gameState === "loss" && lossVideoFinished) {
+    let bx = width / 2 + 400;
+    let by = height * 0.55;
     let bw = 320;
     let bh = 64;
 
@@ -3271,10 +3562,16 @@ function mousePressed() {
   }
 
   // --- LEVEL PICKER BUTTON (win + loss screens) ---
-  if (gameState === "win" || gameState === "loss") {
-    let bx = width / 2,
-      by = height * 0.9,
-      bw = 320,
+  if (gameState === "win" || (gameState === "loss" && lossVideoFinished)) {
+    let bx, by;
+    if (gameState === "loss") {
+      bx = width / 2 + 400;
+      by = height * 0.65;
+    } else {
+      bx = width / 2;
+      by = height * 0.9;
+    }
+    let bw = 320,
       bh = 56;
 
     if (
@@ -3289,31 +3586,21 @@ function mousePressed() {
 }
 
 function mouseReleased() {
-
   // Pause-menu button releases.
-if (gameState === "playing" && isGamePaused) {
-  if (
-    resumeBtnPressed &&
-    pointInsidePauseButton(PAUSE_RESUME_BTN)
-  ) {
+  if (gameState === "playing" && isGamePaused) {
+  if (resumeBtnPressed && pointInsidePauseButton(PAUSE_RESUME_BTN)) {
     playButtonClickSound();
     closePauseMenu();
     return;
   }
 
-  if (
-    restartBtnPressed &&
-    pointInsidePauseButton(PAUSE_RESTART_BTN)
-  ) {
+  if (restartBtnPressed && pointInsidePauseButton(PAUSE_RESTART_BTN)) {
     playButtonClickSound();
     restartCurrentLevel();
     return;
   }
 
-  if (
-    homeBtnPressed &&
-    pointInsidePauseButton(PAUSE_HOME_BTN)
-  ) {
+  if (homeBtnPressed && pointInsidePauseButton(PAUSE_HOME_BTN)) {
     playButtonClickSound();
     returnToHomeFromPause();
     return;
@@ -3351,73 +3638,108 @@ if (gameState === "playing" && isGamePaused) {
     return;
   }
 
-  // --- LEVEL PICKER PLAY BUTTON RELEASE ---
-  if (gameState === "level_picker" && activePanelIndex !== -1) {
-    let i = activePanelIndex;
+  // --- WIN / LOSS BUTTON RELEASES ---
+if (gameState === "win" || (gameState === "loss" && lossVideoFinished)) {
+  // ------------------------------------------------------------
+  // LEVEL PICKER BUTTON
+  // ------------------------------------------------------------
+  let lpBx;
+  let lpBy;
 
-    if (playBtnPressed[i] && levelPanels[i].playHover) {
-      playButtonClickSound();
-      startLevel(i);
-    }
-
-    playBtnPressed[i] = false;
-    return;
+  if (gameState === "loss") {
+    lpBx = width / 2 + 400;
+    lpBy = height * 0.65;
+  } else {
+    lpBx = width / 2;
+    lpBy = height * 0.9;
   }
 
-  // --- WIN / LOSS BUTTON RELEASES ---
-  if (gameState === "win" || gameState === "loss") {
-    // Level Picker button (bottom)
-    let lpBx = width / 2,
-      lpBy = height * 0.9,
-      lpBw = 320,
-      lpBh = 56;
-    let lpHover =
-      mouseX > lpBx - lpBw / 2 &&
-      mouseX < lpBx + lpBw / 2 &&
-      mouseY > lpBy - lpBh / 2 &&
-      mouseY < lpBy + lpBh / 2;
+  const lpBw = 320;
+  const lpBh = 56;
 
-    if (levelPickerBtnPressed && lpHover) {
+  const lpHover =
+    mouseX > lpBx - lpBw / 2 &&
+    mouseX < lpBx + lpBw / 2 &&
+    mouseY > lpBy - lpBh / 2 &&
+    mouseY < lpBy + lpBh / 2;
+
+  if (levelPickerBtnPressed && lpHover) {
+    // Loss-screen Level Picker uses button_2.
+    // Win-screen Level Picker keeps the original sound.
+    if (gameState === "loss") {
+      playButton2Sound();
+    } else {
       playButtonClickSound();
-      // Show loading transition after winning Level 1
-      // or when leaving the Lost screen
-      if ((gameState === "win" && currentLevel === 1) || gameState === "loss") {
-        startLevelPickerTransition();
-      } else {
-        gameState = "level_picker";
-      }
     }
 
-    let lossBx = width / 2,
-      lossBy = height * 0.45,
-      lossBw = 320,
-      lossBh = 64;
-    let lossHover =
-      mouseX > lossBx - lossBw / 2 &&
-      mouseX < lossBx + lossBw / 2 &&
-      mouseY > lossBy - lossBh / 2 &&
-      mouseY < lossBy + lossBh / 2;
+    if (gameState === "win" && currentLevel === 3) {
+      levelPickerBtnPressed = false;
+      lossBtnPressed = false;
+      winBtnPressed = false;
 
-    if (lossBtnPressed && lossHover && gameState === "loss") {
-      playButtonClickSound();
-      resetGame();
-
-      startTime = millis(); // new starting point
-      timerStarted = true; // force timer to run
-      gameEnded = false; // prevent auto-loss
-      finalTime = null; // clear old result
-
-      tutorialActive = false;
-      postTutorialTimerActive = false;
-      tutorialIndex = 999; // mark tutorial as finished
-
-      gameState = "playing";
-      cursor(ARROW);
+      beginWinStory();
+      return;
     }
+
+    startLevelPickerTransition();
 
     levelPickerBtnPressed = false;
     lossBtnPressed = false;
     winBtnPressed = false;
     return;
   }
+
+  // ------------------------------------------------------------
+  // TRY AGAIN BUTTON
+  // ------------------------------------------------------------
+  const lossBx = width / 2 + 400;
+  const lossBy = height * 0.55;
+  const lossBw = 320;
+  const lossBh = 64;
+
+  const lossHover =
+    mouseX > lossBx - lossBw / 2 &&
+    mouseX < lossBx + lossBw / 2 &&
+    mouseY > lossBy - lossBh / 2 &&
+    mouseY < lossBy + lossBh / 2;
+
+  if (gameState === "loss" && lossBtnPressed && lossHover) {
+    playButton2Sound();
+
+    // Stop and reset the death video before gameplay begins again.
+    stopLossVideos();
+
+    // Rebuild and reset the current level.
+    loadLevel(currentLevel);
+    resetGame();
+
+    // Skip tutorials because this is Try Again.
+    tutorialActive = false;
+    postTutorialTimerActive = false;
+    tutorialIndex = 999;
+
+    level2CardActive = false;
+    level3CardActive = false;
+
+    // Start a completely fresh attempt.
+    startTime = millis();
+    timerStarted = true;
+    gameEnded = false;
+    finalTime = null;
+
+    gameState = "playing";
+    cursor(ARROW);
+
+    levelPickerBtnPressed = false;
+    lossBtnPressed = false;
+    winBtnPressed = false;
+    return;
+  }
+
+  // Reset pressed states when the mouse is released elsewhere.
+  levelPickerBtnPressed = false;
+  lossBtnPressed = false;
+  winBtnPressed = false;
+  return;
+}
 }

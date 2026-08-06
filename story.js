@@ -211,9 +211,8 @@ function drawStoryScreen() {
     image(img, zx, zy, zw, zh);
     pop();
   }
- 
 
- if (!isLastPage()) {
+  if (!isLastPage()) {
     STORY_SKIP_BTN.x = 120;
     STORY_SKIP_BTN.y = height - 42;
     drawButton(
@@ -239,7 +238,6 @@ function drawStoryScreen() {
 }
 
 function handleStoryClick() {
-
   if (!isLastPage() && hitButton(STORY_SKIP_BTN)) {
     skipStory();
     return true;

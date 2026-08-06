@@ -101,6 +101,11 @@ function advanceTutorialCard() {
   // Advance to the next card
   tutorialIndex++;
 
+  // Stop the avalanche warning the moment we leave card 0
+  if (warningSound && warningSound.isPlaying()) {
+    warningSound.stop();
+  }
+
   // Direction card (index 2) was just dismissed:
   // start the game timer and return to gameplay
   if (tutorialIndex === 3) {

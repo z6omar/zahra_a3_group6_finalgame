@@ -58,6 +58,185 @@ let nextPanelIndex = -1;
 let isClosingPanel = false;
 let playBtnPressed = [false, false, false];
 
+// ============================================================
+// LOCK BREAK ANIMATION
+// ============================================================
+
+// Circle positions, hoisted out of drawLevelPickerScreen so the
+// animation knows where each lock starts from.
+const LEVEL_CIRCLES = [
+  { x: 570, y: 155 },
+  { x: 565, y: 395 },
+  { x: 531, y: 622 },
+];
+
+// Mirrors how the static lock is drawn in drawLevelCircle():
+// image(lock_icon, cx - 40 - 25, cy - 40, 180, 140)
+const LOCK_DRAW_W = 180;
+const LOCK_DRAW_H = 140;
+const LOCK_OFFSET_X = -65;
+const LOCK_OFFSET_Y = -40;
+
+const LOCK_BREAK_TARGET_SCALE = 3.0; // final size of the flying lock
+const LOCK_BREAK_TRAVEL_FRAMES = 45; // ~0.75s to reach centre
+const LOCK_BREAK_PAUSE_FRAMES = 15; // beat at full size before it cracks
+const LOCK_BREAK_ANIM_SPEED = 3; // frames held per sprite frame
+const LOCK_BREAK_HOLD_FRAMES = 3; // how long the final frame lingers
+const LOCK_BREAK_DISPLAY_SCALE = 1.0; // ← tune so the break sheet matches the flying lock
+const LOCK_BREAK_DIM_ALPHA = 150; // set to 0 to remove the background dim
+
+let pendingUnlockIndex = -1;
+let unlockSound;
+let lockBreakState = "idle"; // "idle" | "moving" | "breaking"
+let lockBreakIndex = -1;
+let lockBreakT = 0;
+let lockBreakFrame = 0;
+let lockBreakFrameTimer = 0;
+let lockBreakHoldTimer = 0;
+let unlockAnimPlayed = [true, false, false]; // level 1 has no lock
+
+// Called from the win block in sketch.js. justBeatenLevel is 1-based, so
+// it doubles as the 0-based index of the level it unlocks.
+function queueLockBreak(justBeatenLevel) {
+  const nextIndex = justBeatenLevel;
+  if (nextIndex > 2) return; // beat level 3, nothing left to unlock
+  if (unlockAnimPlayed[nextIndex]) return; // already unlocked before
+  if (bestStars["level" + justBeatenLevel] < 1) return; // no star, no unlock
+  pendingUnlockIndex = nextIndex;
+}
+
+// Sound effect for the lock popping open after a level is beaten.
+function playUnlockSound() {
+  if (!unlockSound || !unlockSound.isLoaded()) return;
+  if (typeof audioUnlocked !== "undefined" && !audioUnlocked) return;
+  if (unlockSound.isPlaying()) unlockSound.stop();
+  unlockSound.setVolume(0.8);
+  unlockSound.play();
+}
+
+function startLockBreak(index) {
+  lockBreakIndex = index;
+  lockBreakState = "moving";
+  lockBreakT = 0;
+  lockBreakFrame = 0;
+  lockBreakFrameTimer = 0;
+  lockBreakHoldTimer = 0;
+  unlockAnimPlayed[index] = true;
+}
+
+function finishLockBreak() {
+  lockBreakState = "idle";
+  lockBreakIndex = -1;
+  lockBreakT = 0;
+  lockBreakFrame = 0;
+  lockBreakFrameTimer = 0;
+  lockBreakHoldTimer = 0;
+}
+
+function updateLevelCompletionFlags() {
+  level1Complete = bestStars.level1 >= 1;
+  level2Complete = bestStars.level2 >= 1;
+  level3Complete = bestStars.level3 >= 1;
+}
+
+// A level counts as locked while its own lock is mid-animation, so the
+// circle keeps its lock until the break finishes.
+function isLevelUnlocked(index) {
+  if (index === 0) return true;
+  if (lockBreakState !== "idle" && lockBreakIndex === index) return false;
+  return index === 1 ? level1Complete : level2Complete;
+}
+
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function drawLockBreakAnimation() {
+  if (lockBreakState === "idle") return;
+
+  const cfg = SPRITES.lockBreak;
+  const targetX = width / 2;
+  const targetY = height / 2;
+
+  const circle = LEVEL_CIRCLES[lockBreakIndex];
+  const startX = circle.x + LOCK_OFFSET_X + LOCK_DRAW_W / 2;
+  const startY = circle.y + LOCK_OFFSET_Y + LOCK_DRAW_H / 2;
+
+  // Dim the map so the lock reads clearly.
+  if (LOCK_BREAK_DIM_ALPHA > 0) {
+    push();
+    noStroke();
+    const dim =
+      lockBreakState === "moving"
+        ? LOCK_BREAK_DIM_ALPHA * min(1, lockBreakT * 2)
+        : LOCK_BREAK_DIM_ALPHA;
+    fill(5, 12, 40, dim);
+    rect(0, 0, width, height);
+    pop();
+  }
+
+  cursor(ARROW);
+
+  // ---- PHASE 1: fly to centre + scale up ----
+  if (lockBreakState === "moving") {
+    const t = easeOutCubic(lockBreakT);
+    const x = lerp(startX, targetX, t);
+    const y = lerp(startY, targetY, t);
+    const s = lerp(1, LOCK_BREAK_TARGET_SCALE, t);
+    const w = LOCK_DRAW_W * s;
+    const h = LOCK_DRAW_H * s;
+
+    image(lock_icon, x - w / 2, y - h / 2, w, h);
+
+    if (lockBreakT < 1) {
+      lockBreakT = min(1, lockBreakT + 1 / LOCK_BREAK_TRAVEL_FRAMES);
+    } else if (++lockBreakHoldTimer >= LOCK_BREAK_PAUSE_FRAMES) {
+      lockBreakState = "breaking";
+      lockBreakFrame = 0;
+      lockBreakFrameTimer = 0;
+      lockBreakHoldTimer = 0;
+      playUnlockSound(); // synced to the moment the lock cracks
+    }
+    return;
+  }
+
+  // ---- PHASE 2: break ----
+  const f = lockBreakFrame;
+  const S = cfg.scale * LOCK_BREAK_DISPLAY_SCALE;
+
+  const cropL = cfg.cropLeft[f] || 0;
+  const cropR = cfg.cropRight[f] || 0;
+  const cropT = cfg.cropTop[f] || 0;
+  const cropB = cfg.cropBottom[f] || 0;
+
+  const sx = f * cfg.frameWidth + cropL;
+  const sy = cropT;
+  const sw = cfg.frameWidth - cropL - cropR;
+  const sh = cfg.frameHeight - cropT - cropB;
+
+  // Anchor on the UNCROPPED frame box so per-frame crops don't make it jitter.
+  const fullW = cfg.frameWidth * S;
+  const fullH = cfg.frameHeight * S;
+  const left = targetX - fullW / 2 + cropL * S;
+  const top = targetY - fullH / 2 + cropT * S;
+
+  image(cfg.img, left, top, sw * S, sh * S, sx, sy, sw, sh);
+
+  lockBreakFrameTimer++;
+
+  if (lockBreakFrame < cfg.numFrames - 1) {
+    if (lockBreakFrameTimer >= LOCK_BREAK_ANIM_SPEED) {
+      lockBreakFrameTimer = 0;
+      lockBreakFrame++;
+    }
+  } else if (
+    lockBreakFrameTimer >=
+    LOCK_BREAK_ANIM_SPEED + LOCK_BREAK_HOLD_FRAMES
+  ) {
+    finishLockBreak(); // last frame and lock both disappear; circle is now unlocked
+  }
+}
+
 function preloadLevelPickerAssets() {
   levelPickerBg = loadImage("assets/images/level_picker.JPG");
   lock_icon = loadImage("assets/images/lock_icon.png");
@@ -67,11 +246,22 @@ function preloadLevelPickerAssets() {
   foundPopupCard = loadImage("assets/images/Foundpopup_card.png");
   wideBoxImg = loadImage("assets/images/bigger_box.png");
   xButtonImg = loadImage("assets/images/x_button.png");
+  // ← rename this to whatever your lock break sprite sheet is actually called
+  SPRITES.lockBreak.img = loadImage("assets/images/lock_break.png");
+  unlockSound = loadSound("assets/sounds/unlock_sound.mp3");
 }
 
 function drawLevelPickerScreen() {
   cursor(ARROW);
   image(levelPickerBg, 0, 0, width, height);
+
+  updateLevelCompletionFlags();
+
+  // Fire a queued unlock the moment the player lands on this screen
+  if (pendingUnlockIndex !== -1 && lockBreakState === "idle") {
+    startLockBreak(pendingUnlockIndex);
+    pendingUnlockIndex = -1;
+  }
 
   textFont(gameFont);
   textAlign(CENTER);
@@ -81,19 +271,17 @@ function drawLevelPickerScreen() {
   textSize(80);
   text("Select a Level", width / 2 - 20, 70);
 
-  let cx1 = 570,
-    cy1 = 155;
-  let cx2 = 565,
-    cy2 = 395;
-  let cx3 = 531,
-    cy3 = 622;
+  let radius = 73 / 2;
 
-  let diameter = 73;
-  let radius = diameter / 2;
-
-  drawLevelCircle(cx1, cy1, radius, true, 0);
-  drawLevelCircle(cx2, cy2, radius, level1Complete, 1);
-  drawLevelCircle(cx3, cy3, radius, level2Complete, 2);
+  for (let i = 0; i < 3; i++) {
+    drawLevelCircle(
+      LEVEL_CIRCLES[i].x,
+      LEVEL_CIRCLES[i].y,
+      radius,
+      isLevelUnlocked(i),
+      i,
+    );
+  }
 
   for (let i = 0; i < levelPanels.length; i++) {
     let key = "level" + (i + 1); // level1, level2, level3
@@ -133,6 +321,9 @@ function drawLevelPickerScreen() {
 
   drawObjectiveInfoButton();
   drawObjectiveInfoBox();
+
+  // Draw last so the unlock sequence sits above everything else.
+  drawLockBreakAnimation();
 }
 
 function drawLevelCircle(cx, cy, radius, unlocked, index) {
@@ -153,7 +344,8 @@ function drawLevelCircle(cx, cy, radius, unlocked, index) {
     cursor(HAND);
   }
 
-  if (!unlocked) {
+  // Hide the static lock while this one is flying to the centre / breaking.
+  if (!unlocked && !(lockBreakState !== "idle" && lockBreakIndex === index)) {
     noStroke();
     image(lock_icon, cx - 40 + shakeOffset - 25, cy - 40, 180, 140);
   }
@@ -165,10 +357,6 @@ function drawLevelCircle(cx, cy, radius, unlocked, index) {
     let checkX = cx + radius - 42;
     let checkY = cy - radius + 25;
     image(check_icon, checkX, checkY, 70, 70);
-    // --- SIMPLE LEVEL UNLOCK LOGIC ---
-    if (bestStars["level1"] >= 1) level1Complete = true;
-    if (bestStars["level2"] >= 1) level2Complete = true;
-    if (bestStars["level3"] >= 1) level3Complete = true;
   }
 }
 
@@ -229,15 +417,22 @@ function drawInfoPanel(index) {
   let btnX = x + PANEL_W / 2;
   let btnY = y + PANEL_H - 100;
 
- // Determine if the player has played this level before
-let levelKey = "level" + (index + 1);
-let hasPlayed = fastestTimes[levelKey] !== null || bestStars[levelKey] > 0;
+  // Determine if the player has played this level before
+  let levelKey = "level" + (index + 1);
+  let hasPlayed = fastestTimes[levelKey] !== null || bestStars[levelKey] > 0;
 
-// Button label
-let btnLabel = hasPlayed ? "PLAY AGAIN" : "PLAY";
+  // Button label
+  let btnLabel = hasPlayed ? "PLAY AGAIN" : "PLAY";
 
-// Draw button
-let hovered = drawButton(btnLabel, btnX, btnY, 220, 60, playBtnPressed[index]);
+  // Draw button
+  let hovered = drawButton(
+    btnLabel,
+    btnX,
+    btnY,
+    220,
+    60,
+    playBtnPressed[index],
+  );
 
   // store hover if you need it later
   levelPanels[index].playHover = hovered;
@@ -249,108 +444,114 @@ let hovered = drawButton(btnLabel, btnX, btnY, 220, 60, playBtnPressed[index]);
 }
 
 function handleLevelPickerClick() {
+  // Ignore every click while the unlock sequence is playing.
+  if (lockBreakState !== "idle") return;
 
-// -----------------------
-// Close Instructions Box
-// -----------------------
-if (infoOpen) {
+  // -----------------------
+  // Close Instructions Box
+  // -----------------------
+  if (infoOpen) {
+    let boxW = 1000;
+    let boxH = 700;
+    let boxX = infoBoxX;
+    let boxY = height / 2 - boxH / 2;
 
-  let boxW = 1000;
-  let boxH = 700;
-  let boxX = infoBoxX;
-  let boxY = height / 2 - boxH / 2;
+    let closeX = boxX + boxW - CLOSE_BTN_SIZE - CLOSE_BTN_OFFSET_X;
+    let closeY = boxY + CLOSE_BTN_OFFSET_Y;
 
-  let closeX = boxX + boxW - CLOSE_BTN_SIZE - CLOSE_BTN_OFFSET_X;
-  let closeY = boxY + CLOSE_BTN_OFFSET_Y;
+    if (
+      mouseX >= closeX &&
+      mouseX <= closeX + CLOSE_BTN_SIZE &&
+      mouseY >= closeY &&
+      mouseY <= closeY + CLOSE_BTN_SIZE
+    ) {
+      playButton1Sound();
+      infoOpen = false;
+      return;
+    }
+  }
 
   if (
-    mouseX >= closeX &&
-    mouseX <= closeX + CLOSE_BTN_SIZE &&
-    mouseY >= closeY &&
-    mouseY <= closeY + CLOSE_BTN_SIZE
+    mouseX >= HOW_TO_PLAY_X &&
+    mouseX <= HOW_TO_PLAY_X + HOW_TO_PLAY_W &&
+    mouseY >= HOW_TO_PLAY_Y &&
+    mouseY <= HOW_TO_PLAY_Y + HOW_TO_PLAY_H
   ) {
-    playButtonClickSound();
-    infoOpen = false;
+    playButton2Sound();
+    infoOpen = !infoOpen;
     return;
   }
-}
 
-if (
-  mouseX >= HOW_TO_PLAY_X &&
-  mouseX <= HOW_TO_PLAY_X + HOW_TO_PLAY_W &&
-  mouseY >= HOW_TO_PLAY_Y &&
-  mouseY <= HOW_TO_PLAY_Y + HOW_TO_PLAY_H
-) {
-  playButtonClickSound();
-  infoOpen = !infoOpen;
-  return;
-}
-
+  // NOTE: these click targets are your original values, which sit a few
+  // pixels below LEVEL_CIRCLES. Left alone so hit areas don't change.
   let cx = [570, 565, 531];
   let cy = [158, 405, 640];
   let radius = 73 / 2;
 
   for (let i = 0; i < 3; i++) {
-    let unlocked = i === 0 ? true : i === 1 ? level1Complete : level2Complete;
+  const unlocked = isLevelUnlocked(i);
+  const d = dist(mouseX, mouseY, cx[i], cy[i]);
 
-    let d = dist(mouseX, mouseY, cx[i], cy[i]);
-    if (d < radius) {
-      if (!unlocked) {
-        playButtonClickSound();
-        levelShake[i] = 10;
-        activePanelIndex = -1;
-        isClosingPanel = false;
-        nextPanelIndex = -1;
-        return;
-      }
+  if (d < radius) {
+    if (!unlocked) {
+      // Locked Level 2 or Level 3.
+      playLockButtonSound();
 
-      playButtonClickSound();
-
-      if (activePanelIndex === i) {
-        activePanelIndex = -1;
-        isClosingPanel = false;
-        nextPanelIndex = -1;
-        return;
-      }
-
-      if (activePanelIndex !== -1 && activePanelIndex !== i) {
-        isClosingPanel = true;
-        nextPanelIndex = i;
-        return;
-      }
-
-      activePanelIndex = i;
+      levelShake[i] = 10;
+      activePanelIndex = -1;
       isClosingPanel = false;
       nextPanelIndex = -1;
       return;
     }
-  }
-  // --- CHECK PLAY BUTTON CLICK ---
-if (activePanelIndex !== -1) {
-  let panel = levelPanels[activePanelIndex];
 
-  let x = panel.x;
-  let y = 175;
-  const PANEL_W = 500;
-  const PANEL_H = 500;
+    // Unlocked Level 1, Level 2 or Level 3.
+    playButton1Sound();
 
-  let btnX = x + PANEL_W / 2 - 110; // center minus half width
-  let btnY = y + PANEL_H - 130;
-  let btnW = 220;
-  let btnH = 60;
+    if (activePanelIndex === i) {
+      activePanelIndex = -1;
+      isClosingPanel = false;
+      nextPanelIndex = -1;
+      return;
+    }
 
-  if (
-    mouseX > btnX &&
-    mouseX < btnX + btnW &&
-    mouseY > btnY &&
-    mouseY < btnY + btnH
-  ) {
-    playButtonClickSound();
-    startLevel(activePanelIndex);
+    if (activePanelIndex !== -1 && activePanelIndex !== i) {
+      isClosingPanel = true;
+      nextPanelIndex = i;
+      return;
+    }
+
+    activePanelIndex = i;
+    isClosingPanel = false;
+    nextPanelIndex = -1;
     return;
   }
 }
 
+  // --- CHECK PLAY BUTTON CLICK ---
+  if (activePanelIndex !== -1) {
+    let panel = levelPanels[activePanelIndex];
+
+    let x = panel.x;
+    let y = 175;
+    const PANEL_W = 500;
+    const PANEL_H = 500;
+
+    let btnX = x + PANEL_W / 2 - 110; // center minus half width
+    let btnY = y + PANEL_H - 130;
+    let btnW = 220;
+    let btnH = 60;
+
+    if (
+      mouseX > btnX &&
+      mouseX < btnX + btnW &&
+      mouseY > btnY &&
+      mouseY < btnY + btnH
+    ) {
+      playButtonClickSound();
+      startLevel(activePanelIndex);
+      return;
+    }
+  }
 }
 
 function startLevel(i) {
@@ -430,7 +631,7 @@ function drawObjectiveInfoButton() {
       180,
       420,
       1180,
-      290
+      290,
     );
   } else {
     // Draw default state from the top portion of the sprite sheet
@@ -443,7 +644,7 @@ function drawObjectiveInfoButton() {
       180,
       90,
       1180,
-      280
+      280,
     );
   }
 }
@@ -472,31 +673,23 @@ function drawObjectiveInfoBox() {
 
   image(wideBoxImg, boxX, boxY, boxW, boxH);
 
-// -----------------------
-// Close Button
-// -----------------------
-let closeX =
-  boxX + boxW - CLOSE_BTN_SIZE - CLOSE_BTN_OFFSET_X;
+  // -----------------------
+  // Close Button
+  // -----------------------
+  let closeX = boxX + boxW - CLOSE_BTN_SIZE - CLOSE_BTN_OFFSET_X;
 
-let closeY =
-  boxY + CLOSE_BTN_OFFSET_Y;
+  let closeY = boxY + CLOSE_BTN_OFFSET_Y;
 
-image(
-  xButtonImg,
-  closeX,
-  closeY,
-  CLOSE_BTN_SIZE,
-  CLOSE_BTN_SIZE
-);
+  image(xButtonImg, closeX, closeY, CLOSE_BTN_SIZE, CLOSE_BTN_SIZE);
 
-if (
-  mouseX >= closeX &&
-  mouseX <= closeX + CLOSE_BTN_SIZE &&
-  mouseY >= closeY &&
-  mouseY <= closeY + CLOSE_BTN_SIZE
-) {
-  cursor(HAND);
-}
+  if (
+    mouseX >= closeX &&
+    mouseX <= closeX + CLOSE_BTN_SIZE &&
+    mouseY >= closeY &&
+    mouseY <= closeY + CLOSE_BTN_SIZE
+  ) {
+    cursor(HAND);
+  }
 
   fill(255);
   noStroke();
