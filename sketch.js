@@ -3589,19 +3589,19 @@ function mouseReleased() {
   // Pause-menu button releases.
   if (gameState === "playing" && isGamePaused) {
   if (resumeBtnPressed && pointInsidePauseButton(PAUSE_RESUME_BTN)) {
-    playButtonClickSound();
+    playButton1Sound();
     closePauseMenu();
     return;
   }
 
   if (restartBtnPressed && pointInsidePauseButton(PAUSE_RESTART_BTN)) {
-    playButtonClickSound();
+    playButton1Sound();
     restartCurrentLevel();
     return;
   }
 
   if (homeBtnPressed && pointInsidePauseButton(PAUSE_HOME_BTN)) {
-    playButtonClickSound();
+    playButton1Sound();
     returnToHomeFromPause();
     return;
   }
